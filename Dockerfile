@@ -1,11 +1,11 @@
-# Use an official Python runtime as a parent image (slim is fine now)
+# Use an official Python runtime as a parent image
 FROM python:3.11-slim-bookworm
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# Install system dependencies for OpenCV and YOLO
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-glx \
     libglib2.0-0 \
@@ -17,7 +17,7 @@ WORKDIR /app
 # Upgrade pip and install build dependencies
 RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
-# Copy requirements file (dlib and face-recognition removed)
+# Copy requirements file
 COPY requirements.txt /app/
 
 # Install the dependencies
@@ -26,5 +26,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the project
 COPY . /app/
 
-# Run the app using Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "face_detection_system.wsgi:application"]
+# Create a start script to run migrations and then start Gunicorn
+RUN echo "#!/bin/sh\npython manage.py migrate --noinput\npython manage.py collectstatic --noinput\ngunicorn --bind 0.0.0.0:10000 face_detection_system.wsgi:application" > /app/start.sh
+RUN chmod +x /app/start.sh
+
+# Run the app using the start script
+CMD ["/app/start.sh"]
