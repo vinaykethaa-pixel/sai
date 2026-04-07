@@ -10,6 +10,8 @@ from django.conf import settings
 from ultralytics import YOLO
 import numpy as np
 from datetime import datetime
+import base64
+import json
 
 # Load YOLO model
 yolo_model = None
@@ -113,6 +115,85 @@ def gen_frames():
 
     camera.release()
 
-def video_feed(request):
-    return StreamingHttpResponse(gen_frames(),
-                                content_type='multipart/x-mixed-replace; boundary=frame')
+
+@csrf_exempt
+def detect_frame(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            image_data = data.get('image')
+
+            if not image_data:
+                return JsonResponse({'success': False, 'error': 'No image data'})
+
+            # Decode base64 image
+            header, encoded = image_data.split(',', 1)
+            image_bytes = base64.b64decode(encoded)
+
+            # Convert to numpy array
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            if frame is None:
+                return JsonResponse({'success': False, 'error': 'Invalid image'})
+
+            load_models()
+
+            # Phone detection with YOLO
+            yolo_results = yolo_model(frame, verbose=False)
+            phone_detected = False
+            for result in yolo_results:
+                for box in result.boxes:
+                    if int(box.cls[0]) == 67: # Phone class
+                        phone_detected = True
+
+            # Face recognition
+            name = "Unknown"
+            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+            for (x, y, w, h) in faces:
+                if face_recognizer and label_map:
+                    face_roi = gray[y:y+h, x:x+w]
+                    label, confidence = face_recognizer.predict(face_roi)
+                    if confidence < 100:
+                        name = label_map.get(label, "Unknown")
+
+                # If phone detected and name found, save detection record
+                if phone_detected and name != "Unknown":
+                    # Save record to database in background or simple logic
+                    # (Simplified for now, similar to your original logic)
+                    try:
+                        person = Person.objects.get(username=name)
+                        # Avoid saving too often (limit to once every 10 seconds)
+                        # Using simpler last_save logic here if possible
+                        # For simplicity in this example:
+                        from django.utils import timezone
+                        last_save = PhoneDetection.objects.filter(person=person).order_by('-detection_time').first()
+                        if not last_save or (timezone.now() - last_save.detection_time).seconds > 10:
+                            # Save image to media folder
+                            detection_dir = os.path.join(settings.MEDIA_ROOT, 'detections')
+                            os.makedirs(detection_dir, exist_ok=True)
+                            image_filename = f'{name}_{timezone.now().strftime("%Y%m%d_%H%M%S")}.jpg'
+                            image_path = os.path.join(detection_dir, image_filename)
+                            cv2.imwrite(image_path, frame)
+                            PhoneDetection.objects.create(person=person, image=f'detections/{image_filename}')
+                    except Exception as e:
+                        print("Save error:", e)
+
+            return JsonResponse({
+                'success': True,
+                'phone_detected': phone_detected,
+                'name': name
+            })
+
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+def gen_frames():
+    # Leave original gen_frames as is for backward compatibility or local use
+    # but it won't work on Render
+    ...

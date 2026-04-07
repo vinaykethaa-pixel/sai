@@ -26,10 +26,19 @@
             border-radius: 15px 15px 0 0 !important;
             padding: 20px;
         }
-        #videoFeed {
+        #video {
             width: 100%;
             border-radius: 10px;
             background: #000;
+        }
+        .detection-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            pointer-events: none;
+        }
+        .video-container {
+            position: relative;
         }
         .status-badge {
             font-size: 1.2rem;
@@ -92,8 +101,21 @@
                             </span>
                         </div>
 
-                        <div class="text-center">
-                            <img id="videoFeed" src="{% url 'video_feed' %}" alt="Video Feed">
+                        <div class="text-center video-container">
+                            <video id="video" autoplay muted playsinline></video>
+                            <canvas id="canvas" style="display:none;"></canvas>
+                            <div class="detection-overlay" id="overlay">
+                                <span id="detectionStatus" class="badge bg-secondary p-2">Initializing...</span>
+                            </div>
+                        </div>
+
+                        <div class="text-center mt-3">
+                            <button id="startBtn" class="btn btn-primary">
+                                <i class="fas fa-play"></i> Start Detection
+                            </button>
+                            <button id="stopBtn" class="btn btn-danger" disabled>
+                                <i class="fas fa-stop"></i> Stop Detection
+                            </button>
                         </div>
 
                         <div class="mt-4 text-center">
@@ -140,5 +162,78 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const detectionStatus = document.getElementById('detectionStatus');
+        let stream = null;
+        let isDetecting = false;
+        let detectionInterval = null;
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                video.srcObject = stream;
+                isDetecting = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                detectionStatus.textContent = "Detection Running";
+                detectionStatus.className = "badge bg-success p-2";
+                
+                // Start processing frames every 500ms (adjust as needed for performance)
+                detectionInterval = setInterval(processFrame, 500);
+            } catch (err) {
+                console.error("Camera error:", err);
+                alert("Could not access camera: " + err.message);
+            }
+        });
+
+        stopBtn.addEventListener('click', () => {
+            isDetecting = false;
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
+            clearInterval(detectionInterval);
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            detectionStatus.textContent = "Stopped";
+            detectionStatus.className = "badge bg-secondary p-2";
+        });
+
+        async function processFrame() {
+            if (!isDetecting) return;
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+
+            const imageData = canvas.toDataURL('image/jpeg', 0.7); // 0.7 quality to save bandwidth
+
+            try {
+                const response = await fetch('{% url "detect_frame" %}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    if (data.phone_detected) {
+                        detectionStatus.textContent = "⚠️ Phone Detected: " + data.name;
+                        detectionStatus.className = "badge bg-danger p-2";
+                    } else {
+                        detectionStatus.textContent = "Scanning: " + (data.name !== "Unknown" ? data.name : "Waiting...");
+                        detectionStatus.className = "badge bg-success p-2";
+                    }
+                }
+            } catch (err) {
+                console.error("Processing error:", err);
+            }
+        }
+    </script>
 </body>
 </html>
