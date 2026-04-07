@@ -27,13 +27,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the project
 COPY . /app/
 
-# Run collectstatic during build instead of startup to save time
-# Mock a SECRET_KEY for collectstatic to work if needed
-RUN python manage.py collectstatic --noinput
-
-# Create a start script to run migrations and then start Gunicorn
-# Use $PORT variable for Render compatibility
-RUN echo "#!/bin/sh\npython manage.py migrate --noinput\ngunicorn --bind 0.0.0.0:\$PORT --workers 1 --timeout 300 face_detection_system.wsgi:application" > /app/start.sh
+# Create a start script to run migrations, collect static files, and then start Gunicorn
+RUN echo "#!/bin/sh\npython manage.py migrate --noinput\npython manage.py collectstatic --noinput\ngunicorn --bind 0.0.0.0:\$PORT --workers 1 --timeout 300 face_detection_system.wsgi:application" > /app/start.sh
 RUN chmod +x /app/start.sh
 
 # Run the app using the start script

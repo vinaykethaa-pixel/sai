@@ -128,6 +128,7 @@ if STATIC_DIR.exists():
     STATICFILES_DIRS = [STATIC_DIR]
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+WHITENOISE_MANIFEST_STRICT = False
 
 # Media files
 if os.environ.get('CLOUDINARY_CLOUD_NAME'):
