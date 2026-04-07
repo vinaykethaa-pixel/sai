@@ -128,31 +128,53 @@ def detect_frame(request):
                 input_name = yolo['session'].get_inputs()[0].name
                 outputs = yolo['session'].run(None, {input_name: img})
                 
-                # Postprocess (simplified for YOLOv8)
-                output = outputs[0][0]
-                output = np.transpose(output, (1, 0)) # [84, 8400] to [8400, 84]
+                # Postprocess with Numpy Vectorization (Much faster)
+                output = outputs[0][0].T  # [8400, 84]
+                boxes = output[:, :4]     # [x, y, w, h]
+                scores = output[:, 4:]    # [8400, 80]
                 
-                # Filter by confidence (index 67 is cell phone)
-                for row in output:
-                    classes_scores = row[4:]
-                    conf = np.max(classes_scores)
-                    if conf > 0.35:  # Lowered threshold for webcam
-                        cls = np.argmax(classes_scores)
-                        if cls == 67 or cls == 65: # cell phone or remote
-                            x, y, w, h = row[:4]
-                            # Scale to original frame
-                            x1 = (x - w/2) * frame.shape[1] / 640
-                            y1 = (y - h/2) * frame.shape[0] / 640
-                            x2 = (x + w/2) * frame.shape[1] / 640
-                            y2 = (y + h/2) * frame.shape[0] / 640
+                # Get max scores and indices
+                max_scores = np.max(scores, axis=1)
+                class_ids = np.argmax(scores, axis=1)
+                
+                # Filter by confidence and class (67=phone, 65=remote)
+                mask = (max_scores > 0.3) & ((class_ids == 67) | (class_ids == 65))
+                filtered_boxes = boxes[mask]
+                filtered_scores = max_scores[mask]
+                filtered_class_ids = class_ids[mask]
+                
+                if len(filtered_scores) > 0:
+                    # Convert [x, y, w, h] to [x1, y1, x2, y2]
+                    # Original coordinates are scaled to 640x640
+                    x1 = (filtered_boxes[:, 0] - filtered_boxes[:, 2]/2) * frame.shape[1] / 640
+                    y1 = (filtered_boxes[:, 1] - filtered_boxes[:, 3]/2) * frame.shape[0] / 640
+                    x2 = (filtered_boxes[:, 0] + filtered_boxes[:, 2]/2) * frame.shape[1] / 640
+                    y2 = (filtered_boxes[:, 1] + filtered_boxes[:, 3]/2) * frame.shape[0] / 640
+                    
+                    # Manual NMS (Non-Maximum Suppression)
+                    indices = cv2.dnn.NMSBoxes(
+                        [[int(x1[i]), int(y1[i]), int(x2[i]-x1[i]), int(y2[i]-y1[i])] for i in range(len(x1))],
+                        filtered_scores.tolist(), 0.3, 0.45
+                    )
+                    
+                    if len(indices) > 0:
+                        phone_detected = True
+                        for i in indices:
+                            # If it's a list (older cv2) or numpy array
+                            idx = i[0] if isinstance(i, (list, np.ndarray)) else i
                             
-                            phone_detected = True
                             detections.append({
                                 'type': 'phone',
-                                'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
-                                'label': f'Phone Detected! ({int(conf*100)}%)'
+                                'bbox': [int(x1[idx]), int(y1[idx]), int(x2[idx]-x1[idx]), int(y2[idx]-y1[idx])],
+                                'label': f'Phone Detected! ({int(filtered_scores[idx]*100)}%)'
                             })
-                            print(f"LOG: Phone detected with {conf:.2f} confidence")
+                            print(f"DEBUG: Found Phone confidence {filtered_scores[idx]:.2f}")
+                else:
+                    # Log high confidence objects for debugging if nothing was detected
+                    # This helps see what the model is actually seeing
+                    top_idx = np.argmax(max_scores)
+                    if max_scores[top_idx] > 0.2:
+                        print(f"DEBUG: No phone, but top object is {class_ids[top_idx]} with conf {max_scores[top_idx]:.2f}")
             else:
                 # Fallback to Ultralytics PT
                 results = yolo['model'](frame, verbose=False, conf=0.35)
