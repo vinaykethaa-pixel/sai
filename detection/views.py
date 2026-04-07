@@ -6,164 +6,130 @@ from face_capture.models import Person
 import cv2
 import pickle
 import os
+import base64
+import json
 from django.conf import settings
 from ultralytics import YOLO
 import numpy as np
 from datetime import datetime
-#from twilio.rest import Client
+from django.utils import timezone
 
-# Load YOLO model
+# Load YOLO and Face models lazily to save memory
 yolo_model = None
 face_recognizer = None
 label_map = None
 
-'''def send_sms_alert(person_name):
-    """Send SMS alert to admin when phone is detected"""
-    try:
-        client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-
-        message_body = f"ALERT: Phone detected!\nUser: {person_name}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-
-        message = client.messages.create(
-            body=message_body,
-            from_=settings.TWILIO_PHONE_NUMBER,
-            to=settings.ADMIN_PHONE_NUMBER
-        )
-        print(f"SMS sent successfully: {message.sid}")
-        return True
-    except Exception as e:
-        print(f"Error sending SMS: {e}")
-        return False'''
-
-def load_models():
-    global yolo_model, face_recognizer, label_map
-
+def get_yolo_model():
+    global yolo_model
     if yolo_model is None:
         yolo_model = YOLO('yolov8n.pt')
+    return yolo_model
 
+def get_face_models():
+    global face_recognizer, label_map
     if face_recognizer is None:
         model_path = os.path.join(settings.MEDIA_ROOT, 'trained_models', 'face_recognizer.yml')
         label_path = os.path.join(settings.MEDIA_ROOT, 'trained_models', 'label_map.pkl')
 
         if os.path.exists(model_path) and os.path.exists(label_path):
-            # Use same parameters as training
             face_recognizer = cv2.face.LBPHFaceRecognizer_create(
-                radius=2,
-                neighbors=8,
-                grid_x=8,
-                grid_y=8,
-                threshold=80.0
+                radius=2, neighbors=8, grid_x=8, grid_y=8, threshold=80.0
             )
             face_recognizer.read(model_path)
-
             with open(label_path, 'rb') as f:
                 label_map = pickle.load(f)
+    return face_recognizer, label_map
 
 def detection_page(request):
     return render(request, 'detection/detection.html')
 
-def gen_frames():
-    load_models()
+@csrf_exempt
+def detect_frame(request):
+    """AJAX endpoint for real-time detection from browser webcam"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            image_data = data.get('image')
 
-    camera = cv2.VideoCapture(0)
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            if not image_data:
+                return JsonResponse({'success': False, 'error': 'No image data'})
 
-    last_save_time = {}
+            # Decode base64 image
+            header, encoded = image_data.split(',', 1)
+            image_bytes = base64.b64decode(encoded)
 
-    while True:
-        success, frame = camera.read()
-        if not success:
-            break
+            # Convert to numpy array
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        # Detect mobile phones using YOLO
-        results = yolo_model(frame, verbose=False)
-        phone_detected = False
+            if frame is None:
+                return JsonResponse({'success': False, 'error': 'Invalid image'})
 
-        for result in results:
-            boxes = result.boxes
-            for box in boxes:
-                class_id = int(box.cls[0])
-                # Class 67 is cell phone in COCO dataset
-                if class_id == 67:
-                    phone_detected = True
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                    cv2.putText(frame, 'Phone Detected', (x1, y1 - 10),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+            # Get models (Lazy loading)
+            yolo = get_yolo_model()
+            recognizer, labels = get_face_models()
 
-        # Face recognition and detection saving
-        if phone_detected:
+            # 1. Phone Detection (YOLO)
+            results = yolo(frame, verbose=False)
+            phone_detected = False
+            for result in results:
+                for box in result.boxes:
+                    if int(box.cls[0]) == 67: # Phone class
+                        phone_detected = True
+                        break
+
+            # 2. Face Recognition (OpenCV LBPH)
+            name = "Unknown"
+            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            # Apply histogram equalization for better lighting normalization
-            gray = cv2.equalizeHist(gray)
-
-            # Improved face detection parameters
-            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+            gray = cv2.equalizeHist(gray) # Better lighting handling
+            faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
 
             for (x, y, w, h) in faces:
-                face_roi = gray[y:y+h, x:x+w]
-                # Resize to standard size matching training
-                face_roi_resized = cv2.resize(face_roi, (200, 200))
-                name = "Unknown"
-                confidence_score = 0
+                if recognizer and labels:
+                    face_roi = gray[y:y+h, x:x+w]
+                    face_roi = cv2.resize(face_roi, (200, 200)) # Standard size
+                    label, confidence = recognizer.predict(face_roi)
+                    
+                    if confidence < 75: # Strict threshold
+                        name = labels.get(label, "Unknown")
 
-                # Try face recognition if models are loaded
-                if face_recognizer and label_map:
-                    try:
-                        label, confidence = face_recognizer.predict(face_roi_resized)
-                        confidence_score = confidence
-                        # Stricter threshold for better accuracy (lower is better match)
-                        if confidence < 70:  # More strict threshold
-                            name = label_map.get(label, "Unknown")
-                        else:
-                            name = "Unknown"
-                    except:
-                        name = "Unknown"
+                # If phone + known user, save record
+                if phone_detected and name != "Unknown":
+                    save_detection(name, frame)
 
-                # Save detection for both known and unknown users
-                current_time = datetime.now()
-                save_key = name  # Use only name, not position
+            return JsonResponse({
+                'success': True,
+                'phone_detected': phone_detected,
+                'name': name
+            })
 
-                if save_key not in last_save_time or (current_time - last_save_time[save_key]).total_seconds() > 10:
-                    try:
-                        detection_dir = os.path.join(settings.MEDIA_ROOT, 'detections')
-                        os.makedirs(detection_dir, exist_ok=True)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
 
-                        timestamp = current_time.strftime('%Y%m%d_%H%M%S')
-                        image_path = os.path.join(detection_dir, f'{name}_{timestamp}.jpg')
-                        cv2.imwrite(image_path, frame)
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
 
-                        relative_path = f'detections/{name}_{timestamp}.jpg'
-
-                        # Try to link to person if known, otherwise save with person=None
-                        person = None
-                        if name != "Unknown":
-                            try:
-                                person = Person.objects.get(username=name)
-                            except:
-                                pass
-
-                        PhoneDetection.objects.create(person=person, image=relative_path)
-                        last_save_time[save_key] = current_time
-
-                        # Send SMS alert to admin
-                        #send_sms_alert(name)
-                    except Exception as e:
-                        print(f"Error saving detection: {e}")
-
-                # Display confidence score for debugging
-                display_text = f"{name} ({confidence_score:.1f})" if confidence_score > 0 else name
-                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-                cv2.putText(frame, display_text, (x, y - 10),
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
-    camera.release()
+def save_detection(name, frame):
+    """Helper to save phone usage detection to database"""
+    try:
+        person = Person.objects.get(username=name)
+        # throttle (10 seconds)
+        last_save = PhoneDetection.objects.filter(person=person).order_by('-detection_time').first()
+        if not last_save or (timezone.now() - last_save.detection_time).total_seconds() > 10:
+            detection_dir = os.path.join(settings.MEDIA_ROOT, 'detections')
+            os.makedirs(detection_dir, exist_ok=True)
+            
+            timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+            image_filename = f'{name}_{timestamp}.jpg'
+            cv2.imwrite(os.path.join(detection_dir, image_filename), frame)
+            
+            PhoneDetection.objects.create(
+                person=person,
+                image=f'detections/{image_filename}'
+            )
+    except:
+        pass
 
 def video_feed(request):
-    return StreamingHttpResponse(gen_frames(),
-                                content_type='multipart/x-mixed-replace; boundary=frame')
+    """Deprecated: Original local-only video feed view"""
+    return JsonResponse({'error': 'Local video feed not available on live server. Use Detection page instead.'})

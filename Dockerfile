@@ -17,7 +17,7 @@ WORKDIR /app
 # Upgrade pip and install build dependencies
 RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
-# Copy requirements file
+# Copy requirements file (dlib and face-recognition removed)
 COPY requirements.txt /app/
 
 # Install the dependencies
@@ -27,7 +27,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app/
 
 # Create a start script to run migrations and then start Gunicorn
-RUN echo "#!/bin/sh\npython manage.py migrate --noinput\npython manage.py collectstatic --noinput\ngunicorn --bind 0.0.0.0:10000 face_detection_system.wsgi:application" > /app/start.sh
+# Use 1 worker and 300s timeout for stability on Render's 512MB RAM
+RUN echo "#!/bin/sh\npython manage.py migrate --noinput\npython manage.py collectstatic --noinput\ngunicorn --bind 0.0.0.0:10000 --workers 1 --timeout 300 face_detection_system.wsgi:application" > /app/start.sh
 RUN chmod +x /app/start.sh
 
 # Run the app using the start script
