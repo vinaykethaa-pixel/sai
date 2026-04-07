@@ -3,204 +3,287 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Train Model</title>
+    <title>AI Training – Restricted Area Monitor</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary: #6c63ff;
+            --danger: #ff4757;
+            --success: #2ed573;
+            --warning: #ffa502;
+            --dark-bg: #0d0d1a;
+            --card-bg: rgba(255,255,255,0.04);
+            --border: rgba(108,99,255,0.2);
+            --text: #e0e0f0;
+            --muted: #888aaa;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--dark-bg);
+            font-family: 'Inter', sans-serif;
+            color: var(--text);
             min-height: 100vh;
         }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: 
+                radial-gradient(ellipse at 50% 10%, rgba(108,99,255,0.1) 0%, transparent 40%),
+                radial-gradient(ellipse at 20% 80%, rgba(167,139,250,0.05) 0%, transparent 40%);
+            z-index: 0;
+            pointer-events: none;
+        }
+
         .navbar {
-            background: rgba(255,255,255,0.95) !important;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: rgba(13,13,26,0.95) !important;
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(20px);
+            position: sticky; top: 0; z-index: 1000;
+            padding: 14px 0;
         }
-        .card {
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+
+        .navbar-brand {
+            font-weight: 700;
+            background: linear-gradient(135deg, #6c63ff, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .main-container {
+            position: relative;
+            z-index: 1;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .glass-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            backdrop-filter: blur(20px);
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .card-title { font-weight: 700; font-size: 1.5rem; margin-bottom: 12px; }
+        .card-subtitle { color: var(--muted); font-size: 0.95rem; margin-bottom: 40px; }
+
+        .training-visual {
+            width: 120px; height: 120px;
+            background: rgba(108,99,255,0.1);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 3.5rem;
+            color: var(--primary);
+            margin: 0 auto 30px;
+            position: relative;
+        }
+
+        .training-visual i { animation: float 3s ease-in-out infinite; }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+        .visual-ring {
+            position: absolute;
+            top: -10px; left: -10px; right: -10px; bottom: -10px;
+            border: 2px dashed rgba(108,99,255,0.3);
+            border-radius: 50%;
+            animation: spin 10s linear infinite;
+        }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .btn-train {
+            background: linear-gradient(135deg, #6c63ff, #a78bfa);
             border: none;
-        }
-        .card-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            border-radius: 15px 15px 0 0 !important;
-            padding: 20px;
+            padding: 16px 50px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex; align-items: center; gap: 12px;
+            box-shadow: 0 10px 30px rgba(108,99,255,0.3);
         }
-        .btn-custom {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            color: white;
-            padding: 15px 40px;
-            border-radius: 25px;
-            font-weight: 600;
-            font-size: 1.2rem;
+
+        .btn-train:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(108,99,255,0.5);
         }
-        .btn-custom:hover {
-            transform: scale(1.05);
-            color: white;
+
+        .btn-train:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        #trainingLoader { margin-top: 30px; display: none; }
+        .spinner-custom { color: var(--primary); width: 3rem; height: 3rem; }
+        
+        .progress-text { margin-top: 15px; font-weight: 600; color: var(--text); }
+
+        /* Table section */
+        .section-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            margin-top: 40px;
+            overflow: hidden;
+            text-align: left;
         }
-        .spinner-border {
-            width: 3rem;
-            height: 3rem;
+
+        .section-header {
+            padding: 20px 30px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(108,99,255,0.06);
+            display: flex; align-items: center; justify-content: space-between;
         }
-        .training-icon {
-            font-size: 5rem;
-            color: #667eea;
+
+        .section-header h4 { margin: 0; font-size: 1rem; font-weight: 700; }
+
+        .data-table { width: 100%; font-size: 0.9rem; border-collapse: collapse; }
+        .data-table th {
+            padding: 15px 30px; color: var(--muted); font-weight: 600; 
+            text-transform: uppercase; font-size: 0.75rem; border-bottom: 1px solid var(--border);
+        }
+        .data-table td { padding: 15px 30px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+
+        .badge-status { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .badge-success { background: rgba(46,213,115,0.15); color: var(--success); border: 1px solid rgba(46,213,115,0.3); }
+        .badge-warning { background: rgba(255,165,2,0.15); color: var(--warning); border: 1px solid rgba(255,165,2,0.3); }
+
+        #alertMessage {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 2000; padding: 15px 30px; border-radius: 12px; font-weight: 600;
+            display: none; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
         }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+
+    <nav class="navbar navbar-expand-lg">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="{% url 'index' %}">
-                <i class="fas fa-user-shield"></i> Face Recognition System
+            <a class="navbar-brand" href="{% url 'index' %}">
+                <i class="fas fa-shield-alt"></i> Restricted Area Monitor
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'index' %}">Home</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'capture_page' %}">Capture Faces</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="{% url 'training_page' %}">Training</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'detection_page' %}">Detection</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'admin_login' %}">Admin</a>
-                    </li>
-                </ul>
+            <div class="ms-auto">
+                <a href="{% url 'index' %}" class="nav-link" style="color:var(--muted); text-decoration:none;"><i class="fas fa-arrow-left"></i> Home</a>
             </div>
         </div>
     </nav>
 
-    <div class="container mt-5">
-        <div class="row justify-content-center">
-            <div class="col-lg-8">
-                <div class="card">
-                    <div class="card-header">
-                        <h4 class="mb-0"><i class="fas fa-brain"></i> Train Face Recognition Model</h4>
-                    </div>
-                    <div class="card-body">
-                        <div class="text-center mb-4">
-                            <i class="fas fa-cogs training-icon"></i>
-                            <h5 class="mt-3">Ready to Train the Model</h5>
-                            <p class="text-muted">Click the button below to train the face recognition model with all captured images</p>
-                        </div>
+    <div class="main-container">
+        <div class="glass-card">
+            <div class="training-visual">
+                <div class="visual-ring"></div>
+                <i class="fas fa-brain"></i>
+            </div>
+            <h2 class="card-title">AI Synchronization</h2>
+            <p class="card-subtitle">Train the neural network to identify users across all restricted monitoring zones.</p>
 
-                        <div class="text-center mb-4">
-                            <button id="trainBtn" class="btn btn-custom">
-                                <i class="fas fa-play"></i> Start Training
-                            </button>
-                        </div>
+            <button id="trainBtn" class="btn-train">
+                <i class="fas fa-bolt"></i> Start Training Engine
+            </button>
 
-                        <div id="trainingProgress" style="display:none;" class="text-center mb-4">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-3 fw-bold">Training in progress... Please wait</p>
-                        </div>
-
-                        <div id="message" class="alert" style="display:none;"></div>
-
-                        <div class="card mt-4">
-                            <div class="card-header bg-light">
-                                <h5 class="mb-0"><i class="fas fa-users"></i> Registered Persons</h5>
-                            </div>
-                            <div class="card-body">
-                                {% if persons %}
-                                <div class="table-responsive">
-                                    <table class="table table-hover">
-                                        <thead>
-                                            <tr>
-                                                <th>Username</th>
-                                                <th>Images Count</th>
-                                                <th>Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {% for person in persons %}
-                                            <tr>
-                                                <td><i class="fas fa-user"></i> {{ person.username }}</td>
-                                                <td>{{ person.face_images.count }}</td>
-                                                <td>
-                                                    {% if person.is_trained %}
-                                                    <span class="badge bg-success">Trained</span>
-                                                    {% else %}
-                                                    <span class="badge bg-warning">Not Trained</span>
-                                                    {% endif %}
-                                                </td>
-                                            </tr>
-                                            {% endfor %}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                {% else %}
-                                <div class="text-center py-4">
-                                    <i class="fas fa-exclamation-circle fa-3x text-muted mb-3"></i>
-                                    <p class="text-muted">No persons registered yet. Please capture faces first!</p>
-                                    <a href="{% url 'capture_page' %}" class="btn btn-primary">
-                                        <i class="fas fa-camera"></i> Go to Capture
-                                    </a>
-                                </div>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <div id="trainingLoader">
+                <div class="spinner-border spinner-custom" role="status"></div>
+                <div class="progress-text">Analyzing Datasets & Optimizing Weights...</div>
             </div>
         </div>
+
+        <div class="section-card">
+            <div class="section-header">
+                <h4><i class="fas fa-database"></i> Training Status Overview</h4>
+                <span style="font-size: 0.8rem; color: var(--muted);">{{ persons.count }} Total Identities</span>
+            </div>
+            {% if persons %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Identity</th>
+                        <th>Samples</th>
+                        <th>Model Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for person in persons %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div style="width:28px; height:28px; background:rgba(108,99,255,0.2); border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.75rem; margin-right:10px;">{{ person.username|slice:":1"|upper }}</div>
+                                <strong>{{ person.username }}</strong>
+                            </div>
+                        </td>
+                        <td><span style="color: var(--primary); font-weight: 600;">{{ person.face_images.count }}</span> Photos</td>
+                        <td>
+                            {% if person.is_trained %}
+                            <span class="badge-status badge-success"><i class="fas fa-check"></i> Optimized</span>
+                            {% else %}
+                            <span class="badge-status badge-warning"><i class="fas fa-sync"></i> Refresh Required</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div style="text-align: center; padding: 40px; color: var(--muted);">
+                <i class="fas fa-info-circle fa-2x mb-3 opacity-50"></i>
+                <p>No identities found. Register users before training.</p>
+            </div>
+            {% endif %}
+        </div>
     </div>
+
+    <div id="alertMessage"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         const trainBtn = document.getElementById('trainBtn');
-        const trainingProgress = document.getElementById('trainingProgress');
-        const message = document.getElementById('message');
+        const trainingLoader = document.getElementById('trainingLoader');
+        const alertMessage = document.getElementById('alertMessage');
 
         trainBtn.addEventListener('click', async () => {
             trainBtn.disabled = true;
-            trainingProgress.style.display = 'block';
-            message.style.display = 'none';
+            trainingLoader.style.display = 'block';
+            alertMessage.style.display = 'none';
 
             try {
                 const response = await fetch('{% url "train_model" %}', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: { 'Content-Type': 'application/json' }
                 });
 
                 const data = await response.json();
-
-                trainingProgress.style.display = 'none';
+                trainingLoader.style.display = 'none';
 
                 if (data.success) {
-                    showMessage(data.message, 'success');
-                    setTimeout(() => {
-                        location.reload();
-                    }, 2000);
+                    showAlert('Success: Model weight optimization complete.', 'rgba(46, 213, 115, 0.9)');
+                    setTimeout(() => { location.reload(); }, 2000);
                 } else {
-                    showMessage('Error: ' + data.error, 'danger');
+                    showAlert('Error: ' + data.error, 'rgba(255, 71, 87, 0.9)');
                     trainBtn.disabled = false;
                 }
             } catch (err) {
-                trainingProgress.style.display = 'none';
-                showMessage('Error: ' + err.message, 'danger');
+                trainingLoader.style.display = 'none';
+                showAlert('System Exception: ' + err.message, 'rgba(255, 71, 87, 0.9)');
                 trainBtn.disabled = false;
             }
         });
 
-        function showMessage(text, type) {
-            message.textContent = text;
-            message.className = `alert alert-${type}`;
-            message.style.display = 'block';
+        function showAlert(text, color) {
+            alertMessage.textContent = text;
+            alertMessage.style.background = color;
+            alertMessage.style.color = 'white';
+            alertMessage.style.display = 'block';
+            if (color.includes('255, 71, 87')) { // error color
+                setTimeout(() => { alertMessage.style.display = 'none'; }, 4000);
+            }
         }
     </script>
 </body>

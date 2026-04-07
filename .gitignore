@@ -12,8 +12,7 @@ db.sqlite3
 media/
 staticfiles/
 
-# Large Files
-*.pt
+# Large Files (removed *.pt to allow model deployment)
 *.onnx
 
 # IDE

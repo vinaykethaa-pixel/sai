@@ -3,123 +3,241 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Capture Faces</title>
+    <title>Capture Faces – Restricted Area Monitor</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary: #6c63ff;
+            --danger: #ff4757;
+            --success: #2ed573;
+            --warning: #ffa502;
+            --dark-bg: #0d0d1a;
+            --card-bg: rgba(255,255,255,0.04);
+            --border: rgba(108,99,255,0.2);
+            --text: #e0e0f0;
+            --muted: #888aaa;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--dark-bg);
+            font-family: 'Inter', sans-serif;
+            color: var(--text);
             min-height: 100vh;
         }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: 
+                radial-gradient(ellipse at 10% 20%, rgba(108,99,255,0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at 90% 80%, rgba(46,213,115,0.06) 0%, transparent 50%);
+            z-index: 0;
+            pointer-events: none;
+        }
+
         .navbar {
-            background: rgba(255,255,255,0.95) !important;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: rgba(13,13,26,0.95) !important;
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(20px);
+            position: sticky; top: 0; z-index: 1000;
+            padding: 14px 0;
         }
-        .card {
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            border: none;
+
+        .navbar-brand {
+            font-weight: 700;
+            background: linear-gradient(135deg, #6c63ff, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-        .card-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 15px 15px 0 0 !important;
-            padding: 20px;
+
+        .nav-link {
+            color: var(--muted) !important;
+            font-weight: 500;
+            transition: color 0.2s;
+            padding: 6px 14px !important;
         }
-        #video {
+
+        .nav-link:hover, .nav-link.active { color: var(--primary) !important; }
+
+        .main-container {
+            position: relative;
+            z-index: 1;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .glass-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            backdrop-filter: blur(20px);
+            padding: 30px;
+            overflow: hidden;
+        }
+
+        .card-title {
+            font-weight: 700;
+            font-size: 1.4rem;
+            margin-bottom: 8px;
+            display: flex; align-items: center; gap: 12px;
+        }
+
+        .card-subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 30px; }
+
+        .form-group { margin-bottom: 25px; }
+        .form-label { font-weight: 600; font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+        
+        .form-input-dark {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 12px;
+            padding: 14px 18px;
+            font-size: 1rem;
             width: 100%;
-            border-radius: 10px;
+            transition: 0.2s;
+        }
+
+        .form-input-dark:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(108,99,255,0.15);
+        }
+
+        .video-wrapper {
             background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            margin-bottom: 25px;
+            position: relative;
+            aspect-ratio: 4/3;
         }
-        .btn-custom {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            color: white;
-            padding: 12px 30px;
-            border-radius: 25px;
+
+        #video { width: 100%; height: 100%; object-fit: cover; }
+
+        .controls { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 30px; }
+
+        .btn-action {
+            flex: 1;
+            padding: 12px 20px;
+            border-radius: 12px;
             font-weight: 600;
+            font-size: 0.95rem;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            min-width: 160px;
         }
-        .btn-custom:hover {
-            transform: scale(1.05);
-            color: white;
+
+        .btn-primary-custom { background: linear-gradient(135deg, #6c63ff, #a78bfa); color: white; }
+        .btn-primary-custom:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(108,99,255,0.4); }
+
+        .btn-success-custom { background: rgba(46,213,115,0.15); color: var(--success); border: 1px solid rgba(46,213,115,0.3); }
+        .btn-success-custom:hover:not(:disabled) { background: rgba(46,213,115,0.25); color: white; }
+
+        .btn-danger-custom { background: rgba(255,71,87,0.1); color: var(--danger); border: 1px solid rgba(255,71,87,0.3); }
+
+        .btn-action:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+        .stats-hud {
+            display: flex; justify-content: center; align-items: center; gap: 40px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid var(--border);
         }
-        .capture-count {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #667eea;
+
+        .stat-item { text-align: center; }
+        .stat-value { font-size: 2.2rem; font-weight: 800; color: var(--primary); font-variant-numeric: tabular-nums; }
+        .stat-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+
+        .progress-bar-wrap {
+            height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; position: relative; margin-top: 15px; overflow: hidden;
         }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s ease; }
+
+        #alertBox {
+            position: fixed; top: 100px; right: 20px; z-index: 2000;
+            padding: 14px 24px; border-radius: 12px; font-weight: 600; display: none;
+            animation: slideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+            backdrop-filter: blur(10px);
+        }
+
+        @keyframes slideIn { from { transform: translateX(50px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        .alert-success { background: rgba(46, 213, 115, 0.9); color: white; }
+        .alert-warning { background: rgba(255, 165, 2, 0.9); color: white; }
+        .alert-danger { background: rgba(255, 71, 87, 0.9); color: white; }
+
+        @media (max-width: 576px) { .controls { flex-direction: column; } }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+
+    <nav class="navbar navbar-expand-lg">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="{% url 'index' %}">
-                <i class="fas fa-user-shield"></i> Face Recognition System
+            <a class="navbar-brand" href="{% url 'index' %}">
+                <i class="fas fa-shield-alt"></i> Restricted Area Monitor
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'index' %}">Home</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="{% url 'capture_page' %}">Capture Faces</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'training_page' %}">Training</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'detection_page' %}">Detection</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'admin_login' %}">Admin</a>
-                    </li>
-                </ul>
+            <div class="ms-auto d-flex align-items-center">
+                <a href="{% url 'index' %}" class="nav-link"><i class="fas fa-chevron-left"></i> Back</a>
             </div>
         </div>
     </nav>
 
-    <div class="container mt-5">
-        <div class="row justify-content-center">
-            <div class="col-lg-8">
-                <div class="card">
-                    <div class="card-header">
-                        <h4 class="mb-0"><i class="fas fa-camera"></i> Capture Face Images</h4>
+    <div class="main-container">
+        <div class="glass-card">
+            <h2 class="card-title"><i class="fas fa-user-plus" style="color: var(--primary);"></i> User Registration</h2>
+            <p class="card-subtitle">Enter identification and capture at least 15 face samples for training.</p>
+
+            <div class="form-group">
+                <label class="form-label">Student / Personnel ID</label>
+                <input type="text" class="form-input-dark" id="username" placeholder="Enter Registration ID (e.g., 24A21F0001)">
+            </div>
+
+            <div class="video-wrapper">
+                <video id="video" autoplay></video>
+            </div>
+
+            <div class="controls">
+                <button id="startBtn" class="btn-action btn-primary-custom">
+                    <i class="fas fa-video"></i> Open Camera
+                </button>
+                <button id="captureBtn" class="btn-action btn-success-custom" disabled>
+                    <i class="fas fa-camera"></i> Capture Sample
+                </button>
+                <button id="stopBtn" class="btn-action btn-danger-custom" disabled>
+                    <i class="fas fa-stop"></i> Close
+                </button>
+            </div>
+
+            <div class="stats-hud">
+                <div class="stat-item">
+                    <div class="stat-value" id="captureCount">0</div>
+                    <div class="stat-label">Samples Captured</div>
+                    <div class="progress-bar-wrap">
+                        <div class="progress-fill" id="progressFill"></div>
                     </div>
-                    <div class="card-body">
-                        <div class="mb-4">
-                            <label for="username" class="form-label fw-bold">Enter Username</label>
-                            <input type="text" class="form-control form-control-lg" id="username" placeholder="Enter person's name">
-                        </div>
-
-                        <div class="text-center mb-4">
-                            <video id="video" autoplay></video>
-                        </div>
-
-                        <div class="text-center mb-3">
-                            <button id="startCamera" class="btn btn-custom btn-lg me-2">
-                                <i class="fas fa-video"></i> Start Camera
-                            </button>
-                            <button id="captureBtn" class="btn btn-success btn-lg me-2" disabled>
-                                <i class="fas fa-camera"></i> Capture Image
-                            </button>
-                            <button id="stopCamera" class="btn btn-danger btn-lg" disabled>
-                                <i class="fas fa-stop"></i> Stop Camera
-                            </button>
-                        </div>
-
-                        <div class="text-center">
-                            <p class="mb-2">Images Captured: <span class="capture-count" id="captureCount">0</span></p>
-                            <div id="message" class="alert" style="display:none;"></div>
-                        </div>
-                    </div>
+                </div>
+                <div class="stat-item" style="border-left: 1px solid var(--border); padding-left: 40px;">
+                    <div class="stat-value" style="color: var(--muted);">15</div>
+                    <div class="stat-label">Target Goal</div>
                 </div>
             </div>
         </div>
     </div>
 
+    <div id="alertBox"></div>
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -127,84 +245,91 @@
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const captureBtn = document.getElementById('captureBtn');
-        const startCamera = document.getElementById('startCamera');
-        const stopCamera = document.getElementById('stopCamera');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
         const usernameInput = document.getElementById('username');
         const captureCount = document.getElementById('captureCount');
-        const message = document.getElementById('message');
+        const progressFill = document.getElementById('progressFill');
+        const alertBox = document.getElementById('alertBox');
+        
         let stream = null;
         let count = 0;
 
-        startCamera.addEventListener('click', async () => {
+        startBtn.addEventListener('click', async () => {
             try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480 } 
+                });
                 video.srcObject = stream;
                 captureBtn.disabled = false;
-                stopCamera.disabled = false;
-                startCamera.disabled = true;
-                showMessage('Camera started successfully!', 'success');
+                stopBtn.disabled = false;
+                startBtn.disabled = true;
+                showAlert('System Ready: Camera Active', 'success');
             } catch (err) {
-                showMessage('Error accessing camera: ' + err.message, 'danger');
+                showAlert('Hardware Error: ' + err.message, 'danger');
             }
         });
 
-        stopCamera.addEventListener('click', () => {
+        stopBtn.addEventListener('click', () => {
             if (stream) {
-                stream.getTracks().forEach(track => track.stop());
+                stream.getTracks().forEach(t => t.stop());
                 video.srcObject = null;
                 captureBtn.disabled = true;
-                stopCamera.disabled = true;
-                startCamera.disabled = false;
-                showMessage('Camera stopped', 'info');
+                stopBtn.disabled = true;
+                startBtn.disabled = false;
+                showAlert('System Idle: Camera Disconnected', 'warning');
             }
         });
 
         captureBtn.addEventListener('click', async () => {
             const username = usernameInput.value.trim();
             if (!username) {
-                showMessage('Please enter a username!', 'warning');
+                usernameInput.style.borderColor = 'var(--danger)';
+                showAlert('Identification Required', 'warning');
                 return;
+            } else {
+                usernameInput.style.borderColor = '';
             }
 
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
-
-            const imageData = canvas.toDataURL('image/jpeg');
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
 
             try {
                 const response = await fetch('{% url "save_face" %}', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        username: username,
-                        image: imageData
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, image: imageData })
                 });
 
                 const data = await response.json();
-
                 if (data.success) {
                     count = data.count;
                     captureCount.textContent = count;
-                    showMessage(`Image ${count} captured successfully!`, 'success');
+                    
+                    // Update progress
+                    const progress = Math.min((count / 15) * 100, 100);
+                    progressFill.style.width = progress + '%';
+                    
+                    if (count >= 15) {
+                        progressFill.style.background = 'var(--success)';
+                    }
+
+                    showAlert(`Sample #${count} Saved`, 'success');
                 } else {
-                    showMessage('Error: ' + data.error, 'danger');
+                    showAlert('Save Error: ' + data.error, 'danger');
                 }
             } catch (err) {
-                showMessage('Error saving image: ' + err.message, 'danger');
+                showAlert('Network Error: ' + err.message, 'danger');
             }
         });
 
-        function showMessage(text, type) {
-            message.textContent = text;
-            message.className = `alert alert-${type}`;
-            message.style.display = 'block';
-            setTimeout(() => {
-                message.style.display = 'none';
-            }, 3000);
+        function showAlert(text, type) {
+            alertBox.textContent = text;
+            alertBox.className = `alertBox alert-${type}`;
+            alertBox.style.display = 'block';
+            setTimeout(() => { alertBox.style.display = 'none'; }, 2000);
         }
     </script>
 </body>

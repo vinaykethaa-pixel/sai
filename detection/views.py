@@ -1,7 +1,7 @@
 from django.shortcuts import render
-from django.http import JsonResponse, StreamingHttpResponse
+from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from .models import PhoneDetection
+from .models import PhoneDetection, RestrictedArea
 from face_capture.models import Person
 import cv2
 import pickle
@@ -11,7 +11,6 @@ import json
 from django.conf import settings
 from ultralytics import YOLO
 import numpy as np
-from datetime import datetime
 from django.utils import timezone
 
 # Load YOLO and Face models lazily to save memory
@@ -19,11 +18,13 @@ yolo_model = None
 face_recognizer = None
 label_map = None
 
+
 def get_yolo_model():
     global yolo_model
     if yolo_model is None:
         yolo_model = YOLO('yolov8n.pt')
     return yolo_model
+
 
 def get_face_models():
     global face_recognizer, label_map
@@ -40,8 +41,17 @@ def get_face_models():
                 label_map = pickle.load(f)
     return face_recognizer, label_map
 
+
 def detection_page(request):
-    return render(request, 'detection/detection.html')
+    areas = RestrictedArea.objects.filter(is_active=True)
+    return render(request, 'detection/detection.html', {'areas': areas})
+
+
+def get_active_areas(request):
+    """API: Return list of active restricted areas"""
+    areas = list(RestrictedArea.objects.filter(is_active=True).values('id', 'name', 'description'))
+    return JsonResponse({'areas': areas})
+
 
 @csrf_exempt
 def detect_frame(request):
@@ -50,9 +60,18 @@ def detect_frame(request):
         try:
             data = json.loads(request.body)
             image_data = data.get('image')
+            area_id = data.get('area_id')  # Restricted area selected by user
 
             if not image_data:
                 return JsonResponse({'success': False, 'error': 'No image data'})
+
+            # Validate restricted area
+            restricted_area = None
+            if area_id:
+                try:
+                    restricted_area = RestrictedArea.objects.get(id=area_id, is_active=True)
+                except RestrictedArea.DoesNotExist:
+                    pass
 
             # Decode base64 image
             header, encoded = image_data.split(',', 1)
@@ -69,26 +88,31 @@ def detect_frame(request):
             yolo = get_yolo_model()
             recognizer, labels = get_face_models()
 
-            # 1. Advanced Phone/Object Detection (YOLO)
-            # Lowering confidence even more (0.15) and including "remote" (65) which is a common mis-ID for phones
-            results = yolo(frame, verbose=False, conf=0.15)
+            # 1. Phone Detection (YOLO)
+            # Increased confidence to 0.45 to reduce false positives
+            results = yolo(frame, verbose=False, conf=0.45)
             phone_detected = False
             detections = []
-            
+
             for result in results:
                 for box in result.boxes:
                     cls = int(box.cls[0])
                     x1, y1, x2, y2 = box.xyxy[0].tolist()
-                    
-                    # 67 is cell phone, 65 is remote (often how phones look from the back)
-                    if cls in [67, 65]:
+                    conf = float(box.conf[0])
+
+                    # 67 = cell phone, 65 = remote
+                    # If it's a cell phone, we accept it with the high confidence
+                    # If it's a remote, we only accept if very confident (0.6+)
+                    is_phone = (cls == 67) or (cls == 65 and conf > 0.6)
+
+                    if is_phone:
                         phone_detected = True
                         detections.append({
                             'type': 'phone',
                             'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
-                            'label': 'Phone'# if cls == 67 else 'Phone (alt)'
+                            'label': 'Phone Detected!'
                         })
-                    elif box.conf[0] > 0.35: # Generic objects debug
+                    elif conf > 0.4: # Log other objects with decent confidence
                         detections.append({
                             'type': 'object',
                             'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
@@ -96,22 +120,24 @@ def detect_frame(request):
                         })
 
             # 2. Face Recognition (OpenCV LBPH)
-            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            face_cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            )
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            gray = cv2.equalizeHist(gray) # Better lighting handling
-            
-            # Using 1.1 scaleFactor and 4 minNeighbors for high sensitivity
-            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+            gray = cv2.equalizeHist(gray)
+            faces = face_cascade.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30)
+            )
 
             found_names = []
+            alert_triggered = False
+
             for (x, y, w, h) in faces:
                 name = "Unknown"
                 if recognizer and labels:
                     face_roi = gray[y:y+h, x:x+w]
                     face_roi = cv2.resize(face_roi, (200, 200))
                     label, confidence = recognizer.predict(face_roi)
-                    
-                    # 80 confidence is a good balance for LBPH
                     if confidence < 80:
                         name = labels.get(label, "Unknown")
                         if name != "Unknown":
@@ -123,15 +149,20 @@ def detect_frame(request):
                     'label': name
                 })
 
-                # If phone + known user, save record
-                if phone_detected and name != "Unknown":
-                    save_detection(name, frame)
+                # Save only when: phone detected + in restricted area
+                if phone_detected and restricted_area and name != "Unknown":
+                    saved = save_detection_with_alert(name, frame, restricted_area)
+                    if saved:
+                        alert_triggered = True
 
             return JsonResponse({
                 'success': True,
                 'phone_detected': phone_detected,
                 'name': found_names[0] if found_names else "Unknown",
-                'detections': detections
+                'detections': detections,
+                'area_active': restricted_area is not None,
+                'alert_triggered': alert_triggered,
+                'area_name': restricted_area.name if restricted_area else None,
             })
 
         except Exception as e:
@@ -139,27 +170,41 @@ def detect_frame(request):
 
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
-def save_detection(name, frame):
-    """Helper to save phone usage detection to database"""
+
+def save_detection_with_alert(name, frame, area):
+    """Save phone detection with alert flag — only for restricted areas"""
     try:
         person = Person.objects.get(username=name)
-        # throttle (10 seconds)
-        last_save = PhoneDetection.objects.filter(person=person).order_by('-detection_time').first()
-        if not last_save or (timezone.now() - last_save.detection_time).total_seconds() > 10:
-            detection_dir = os.path.join(settings.MEDIA_ROOT, 'detections')
-            os.makedirs(detection_dir, exist_ok=True)
-            
-            timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
-            image_filename = f'{name}_{timestamp}.jpg'
-            cv2.imwrite(os.path.join(detection_dir, image_filename), frame)
-            
-            PhoneDetection.objects.create(
-                person=person,
-                image=f'detections/{image_filename}'
-            )
-    except:
-        pass
+
+        # Throttle: 10 seconds cooldown per person per area
+        last_save = PhoneDetection.objects.filter(
+            person=person, area=area
+        ).order_by('-detection_time').first()
+
+        if last_save and (timezone.now() - last_save.detection_time).total_seconds() < 10:
+            return False  # Too soon, skip
+
+        detection_dir = os.path.join(settings.MEDIA_ROOT, 'detections')
+        os.makedirs(detection_dir, exist_ok=True)
+
+        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+        image_filename = f'{name}_{timestamp}.jpg'
+        cv2.imwrite(os.path.join(detection_dir, image_filename), frame)
+
+        PhoneDetection.objects.create(
+            person=person,
+            area=area,
+            image=f'detections/{image_filename}',
+            is_read=False  # triggers admin notification
+        )
+        return True
+
+    except Exception:
+        return False
+
 
 def video_feed(request):
-    """Deprecated: Original local-only video feed view"""
-    return JsonResponse({'error': 'Local video feed not available on live server. Use Detection page instead.'})
+    """Deprecated: Not available on live server"""
+    return JsonResponse({
+        'error': 'Local video feed not available on live server. Use Detection page instead.'
+    })

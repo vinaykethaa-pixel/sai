@@ -1,13 +1,32 @@
+databases:
+  - name: ramdb
+    plan: free
+    region: oregon
+
 services:
   - type: web
-    name: face-attendance-system
+    name: restricted-area-monitor
     env: docker
     plan: free
-    region: oregon # Common default
+    region: oregon 
     envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ramdb
+          property: connectionString
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
         value: "*"
       - key: SECRET_KEY
-        value: "django-insecure-rr9+5oc%@p^z%^z_wm5!=+ja_q4_ek58u1s4bm-mfejz08b#d!"
+        generateValue: true
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+    disk:
+      name: yolocache
+      mountPath: /root/.config/Ultralytics
+      sizeGB: 1

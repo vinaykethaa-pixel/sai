@@ -3,305 +3,826 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Detection</title>
+    <title>Live Detection – Restricted Area Monitor</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary: #6c63ff;
+            --danger: #ff4757;
+            --success: #2ed573;
+            --warning: #ffa502;
+            --dark-bg: #0d0d1a;
+            --card-bg: rgba(255,255,255,0.04);
+            --border: rgba(108,99,255,0.25);
+            --text: #e0e0f0;
+            --muted: #888aaa;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--dark-bg);
+            font-family: 'Inter', sans-serif;
+            color: var(--text);
             min-height: 100vh;
+            overflow-x: hidden;
         }
-        .navbar {
-            background: rgba(255,255,255,0.95) !important;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .card {
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            border: none;
-        }
-        .card-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 15px 15px 0 0 !important;
-            padding: 20px;
-        }
-        #video {
-            width: 100%;
-            border-radius: 10px;
-            background: #000;
-        }
-        .detection-overlay {
-            position: absolute;
-            top: 10px;
-            left: 10px;
+
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(ellipse at 30% 40%, rgba(108,99,255,0.12) 0%, transparent 60%),
+                        radial-gradient(ellipse at 70% 70%, rgba(255,71,87,0.08) 0%, transparent 60%);
+            z-index: 0;
             pointer-events: none;
         }
-        .video-container {
+
+        /* Navbar */
+        .navbar {
+            background: rgba(13,13,26,0.95) !important;
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(20px);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            padding: 14px 0;
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.15rem;
+            background: linear-gradient(135deg, #6c63ff, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .nav-link {
+            color: var(--muted) !important;
+            font-weight: 500;
+            transition: color 0.2s;
             position: relative;
+            padding: 6px 14px !important;
         }
-        .status-badge {
-            font-size: 1.2rem;
-            padding: 10px 20px;
+
+        .nav-link:hover, .nav-link.active {
+            color: var(--primary) !important;
         }
-        .alert-custom {
+
+        .nav-link.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 14px;
+            right: 14px;
+            height: 2px;
+            background: var(--primary);
+            border-radius: 2px;
+        }
+
+        /* Main container */
+        .main-container {
+            position: relative;
+            z-index: 1;
+            padding: 30px 20px;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        /* Page title */
+        .page-title {
+            font-size: 1.6rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 4px;
+        }
+
+        .page-subtitle {
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin-bottom: 24px;
+        }
+
+        /* Glass cards */
+        .glass-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            backdrop-filter: blur(20px);
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .glass-card h6 {
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+            margin-bottom: 16px;
+        }
+
+        /* Area Selector */
+        .area-selector-wrap {
+            background: linear-gradient(135deg, rgba(108,99,255,0.08), rgba(255,71,87,0.06));
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+        }
+
+        .area-selector-label {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--text);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .area-selector-label .fa-map-marker-alt {
+            color: var(--danger);
+        }
+
+        .area-required-badge {
+            font-size: 0.7rem;
+            background: rgba(255,71,87,0.15);
+            color: var(--danger);
+            border: 1px solid rgba(255,71,87,0.3);
+            border-radius: 20px;
+            padding: 2px 10px;
+            font-weight: 600;
+        }
+
+        #areaSelect {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            color: var(--text);
             border-radius: 10px;
-            padding: 15px;
+            padding: 12px 16px;
+            font-size: 0.95rem;
+            width: 100%;
+            transition: border-color 0.2s;
+            cursor: pointer;
+        }
+
+        #areaSelect:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
+        }
+
+        #areaSelect option {
+            background: #1a1a2e;
+            color: var(--text);
+        }
+
+        .no-areas-warning {
+            background: rgba(255,165,2,0.08);
+            border: 1px solid rgba(255,165,2,0.3);
+            border-radius: 10px;
+            padding: 12px 16px;
+            color: var(--warning);
+            font-size: 0.88rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Video section */
+        .video-wrapper {
+            position: relative;
+            background: #000;
+            border-radius: 14px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        #video {
+            width: 100%;
+            display: block;
+            border-radius: 14px;
+        }
+
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Status HUD */
+        .status-hud {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            pointer-events: none;
+        }
+
+        .hud-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .hud-badge.idle { background: rgba(136,138,170,0.7); color: #fff; }
+        .hud-badge.running { background: rgba(46,213,115,0.8); color: #fff; }
+        .hud-badge.phone { background: rgba(255,71,87,0.85); color: #fff; animation: pulseRed 1s infinite; }
+        .hud-badge.area-info { background: rgba(108,99,255,0.75); color: #fff; }
+
+        @keyframes pulseRed {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255,71,87,0.7); }
+            50% { box-shadow: 0 0 0 8px rgba(255,71,87,0); }
+        }
+
+        /* ALERT FLASH OVERLAY */
+        #alertFlash {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 9999;
+            display: none;
+            pointer-events: none;
+        }
+
+        .alert-flash-bar {
+            background: linear-gradient(90deg, #ff0033, #ff4757, #ff0033);
+            background-size: 200% 100%;
+            animation: alertSlide 0.4s ease-out, gradientShift 1.5s linear infinite;
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 4px 30px rgba(255,71,87,0.6);
+        }
+
+        @keyframes alertSlide {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 0%; }
+            100% { background-position: 200% 0%; }
+        }
+
+        .alert-flash-icon {
+            font-size: 1.6rem;
+            animation: shake 0.5s infinite;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-10deg); }
+            75% { transform: rotate(10deg); }
+        }
+
+        .alert-flash-text h5 {
+            margin: 0;
+            font-weight: 700;
+            font-size: 1rem;
+            color: white;
+        }
+
+        .alert-flash-text p {
+            margin: 0;
+            font-size: 0.82rem;
+            color: rgba(255,255,255,0.85);
+        }
+
+        /* Controls */
+        .control-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #6c63ff, #a78bfa);
+            border: none;
+            color: white;
+            padding: 11px 28px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-start:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(108,99,255,0.4);
+        }
+
+        .btn-start:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .btn-stop {
+            background: transparent;
+            border: 1px solid var(--danger);
+            color: var(--danger);
+            padding: 11px 28px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-stop:hover:not(:disabled) {
+            background: rgba(255,71,87,0.1);
+            transform: translateY(-2px);
+        }
+
+        .btn-stop:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        /* Stats row */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            transition: border-color 0.2s;
+        }
+
+        .stat-card:hover { border-color: var(--primary); }
+
+        .stat-icon {
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-size: 0.78rem;
+            color: var(--muted);
+            font-weight: 500;
+        }
+
+        .stat-value {
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-top: 2px;
+        }
+
+        /* Detection log */
+        .log-entry {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .log-entry.alert {
+            background: rgba(255,71,87,0.1);
+            border: 1px solid rgba(255,71,87,0.3);
+            color: #ff8a99;
+        }
+
+        .log-entry.scan {
+            background: rgba(108,99,255,0.06);
+            border: 1px solid rgba(108,99,255,0.15);
+            color: var(--muted);
+        }
+
+        .log-time {
+            font-size: 0.75rem;
+            color: var(--muted);
+            min-width: 60px;
+        }
+
+        /* Warning box */
+        .info-box {
+            background: rgba(108,99,255,0.06);
+            border: 1px solid rgba(108,99,255,0.2);
+            border-radius: 10px;
+            padding: 12px 16px;
+            font-size: 0.85rem;
+            color: var(--muted);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .info-box.warning-box {
+            background: rgba(255,165,2,0.06);
+            border-color: rgba(255,165,2,0.2);
+            color: var(--warning);
+        }
+
+        @media (max-width: 576px) {
+            .stats-row { grid-template-columns: 1fr 1fr; }
+            .control-row { flex-direction: column; }
         }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-light bg-light">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="{% url 'index' %}">
-                <i class="fas fa-user-shield"></i> Face Recognition System
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'index' %}">Home</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'capture_page' %}">Capture Faces</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'training_page' %}">Training</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="{% url 'detection_page' %}">Detection</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'admin_login' %}">Admin</a>
-                    </li>
-                </ul>
+
+<!-- ALERT FLASH OVERLAY -->
+<div id="alertFlash">
+    <div class="alert-flash-bar">
+        <div class="alert-flash-icon">🚨</div>
+        <div class="alert-flash-text">
+            <h5>⚠️ RESTRICTED AREA VIOLATION!</h5>
+            <p id="alertFlashMsg">Phone detected. Alert sent to admin.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg">
+    <div class="container">
+        <a class="navbar-brand" href="{% url 'index' %}">
+            <i class="fas fa-shield-alt"></i> Restricted Area Monitor
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+            style="border-color: var(--border);">
+            <span class="navbar-toggler-icon" style="filter: invert(1);"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item"><a class="nav-link" href="{% url 'index' %}"><i class="fas fa-home"></i> Home</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'capture_page' %}"><i class="fas fa-camera"></i> Capture</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'training_page' %}"><i class="fas fa-brain"></i> Train</a></li>
+                <li class="nav-item"><a class="nav-link active" href="{% url 'detection_page' %}"><i class="fas fa-video"></i> Detection</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'admin_login' %}"><i class="fas fa-lock"></i> Admin</a></li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="main-container">
+
+    <h1 class="page-title"><i class="fas fa-map-marked-alt"></i> Restricted Area Detection</h1>
+    <p class="page-subtitle">Phone usage in restricted areas is automatically detected and admin is alerted in real-time.</p>
+
+    <!-- AREA SELECTOR -->
+    <div class="area-selector-wrap">
+        <div class="area-selector-label">
+            <i class="fas fa-map-marker-alt"></i>
+            Select Restricted Area
+            <span class="area-required-badge">REQUIRED</span>
+        </div>
+
+        {% if areas %}
+        <select id="areaSelect">
+            <option value="">— Choose a Restricted Area —</option>
+            {% for area in areas %}
+            <option value="{{ area.id }}">📍 {{ area.name }}{% if area.description %} — {{ area.description }}{% endif %}</option>
+            {% endfor %}
+        </select>
+        <p style="font-size:0.8rem; color: var(--muted); margin-top:8px;">
+            <i class="fas fa-info-circle"></i>
+            Phone detection alerts will only be recorded for the selected area. Choose the area before starting.
+        </p>
+        {% else %}
+        <div class="no-areas-warning">
+            <i class="fas fa-exclamation-triangle fa-lg"></i>
+            <div>
+                <strong>No Restricted Areas Configured</strong><br>
+                Admin must add restricted areas first from the <a href="{% url 'admin_dashboard' %}" style="color: var(--warning);">Admin Dashboard</a>.
             </div>
         </div>
-    </nav>
+        {% endif %}
+    </div>
 
-    <div class="container mt-5">
-        <div class="row justify-content-center">
-            <div class="col-lg-10">
-                <div class="card">
-                    <div class="card-header">
-                        <h4 class="mb-0"><i class="fas fa-video"></i> Live Face & Phone Detection</h4>
+    <div class="row g-4">
+        <!-- Camera Feed -->
+        <div class="col-lg-8">
+            <div class="glass-card" style="padding: 0; overflow: hidden;">
+                <div class="video-wrapper" style="border-radius: 16px;">
+                    <video id="video" autoplay muted playsinline></video>
+                    <canvas id="overlayCanvas"></canvas>
+                    <canvas id="canvas" style="display:none;"></canvas>
+
+                    <!-- HUD -->
+                    <div class="status-hud">
+                        <span class="hud-badge idle" id="statusBadge">
+                            <i class="fas fa-circle"></i> Idle
+                        </span>
+                        <span class="hud-badge area-info" id="areaBadge" style="display:none;">
+                            <i class="fas fa-map-marker-alt"></i> <span id="areaNameBadge"></span>
+                        </span>
                     </div>
-                    <div class="card-body">
-                        <div class="alert alert-info alert-custom mb-4">
-                            <i class="fas fa-info-circle"></i>
-                            <strong>Detection Active:</strong> The system will automatically detect faces and mobile phone usage.
-                            When a person using a phone is detected, the image will be saved to the admin dashboard.
-                        </div>
+                </div>
+            </div>
 
-                        <div class="text-center mb-3">
-                            <span class="badge bg-success status-badge">
-                                <i class="fas fa-circle"></i> Live Monitoring
-                            </span>
-                        </div>
+            <!-- Controls -->
+            <div class="control-row">
+                <button class="btn-start" id="startBtn" {% if not areas %}disabled{% endif %}>
+                    <i class="fas fa-play"></i> Start Monitoring
+                </button>
+                <button class="btn-stop" id="stopBtn" disabled>
+                    <i class="fas fa-stop"></i> Stop
+                </button>
+            </div>
 
-                        <div class="text-center video-container mx-auto" style="max-width: 640px;">
-                            <video id="video" autoplay muted playsinline></video>
-                            <canvas id="overlayCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
-                            <canvas id="canvas" style="display:none;"></canvas>
-                            <div class="detection-overlay" id="overlay">
-                                <span id="detectionStatus" class="badge bg-secondary p-2">Initializing...</span>
-                            </div>
-                        </div>
+            {% if not areas %}
+            <div class="info-box warning-box mt-3">
+                <i class="fas fa-exclamation-triangle"></i>
+                No restricted areas added. Please configure areas in the admin dashboard first.
+            </div>
+            {% endif %}
 
-                        <div class="text-center mt-3">
-                            <button id="startBtn" class="btn btn-primary">
-                                <i class="fas fa-play"></i> Start Detection
-                            </button>
-                            <button id="stopBtn" class="btn btn-danger" disabled>
-                                <i class="fas fa-stop"></i> Stop Detection
-                            </button>
-                        </div>
+            <div class="info-box mt-3">
+                <i class="fas fa-info-circle" style="color: var(--primary);"></i>
+                Alerts are only generated when a phone is detected in the selected restricted area.
+                Make sure to select an area before starting.
+            </div>
+        </div>
 
-                        <div class="mt-4 text-center">
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <div class="card bg-light">
-                                        <div class="card-body">
-                                            <i class="fas fa-user-check fa-2x text-primary mb-2"></i>
-                                            <h6>Face Recognition</h6>
-                                            <p class="text-muted mb-0">Active</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="card bg-light">
-                                        <div class="card-body">
-                                            <i class="fas fa-mobile-alt fa-2x text-warning mb-2"></i>
-                                            <h6>Phone Detection</h6>
-                                            <p class="text-muted mb-0">YOLOv8</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="card bg-light">
-                                        <div class="card-body">
-                                            <i class="fas fa-save fa-2x text-success mb-2"></i>
-                                            <h6>Auto Save</h6>
-                                            <p class="text-muted mb-0">Enabled</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Stats -->
+            <div class="glass-card">
+                <h6><i class="fas fa-chart-bar"></i> Session Stats</h6>
+                <div class="stats-row" style="grid-template-columns: 1fr 1fr;">
+                    <div class="stat-card">
+                        <div class="stat-icon">📱</div>
+                        <div class="stat-label">Phones</div>
+                        <div class="stat-value" id="phoneCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🚨</div>
+                        <div class="stat-label">Alerts</div>
+                        <div class="stat-value" id="alertCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">👤</div>
+                        <div class="stat-label">Last Person</div>
+                        <div class="stat-value" id="lastPerson" style="font-size:0.78rem;">—</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🎯</div>
+                        <div class="stat-label">Frames</div>
+                        <div class="stat-value" id="frameCount">0</div>
+                    </div>
+                </div>
+            </div>
 
-                        <div class="alert alert-warning alert-custom mt-4">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <strong>Note:</strong> Make sure you have trained the model before starting detection.
-                            <a href="{% url 'training_page' %}" class="alert-link">Go to Training</a>
-                        </div>
+            <!-- Live Log -->
+            <div class="glass-card">
+                <h6><i class="fas fa-list-alt"></i> Live Event Log</h6>
+                <div id="eventLog" style="max-height: 240px; overflow-y: auto;">
+                    <div style="text-align:center; color: var(--muted); font-size:0.82rem; padding: 20px 0;">
+                        <i class="fas fa-satellite-dish"></i><br>Waiting for events...
                     </div>
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const overlayCanvas = document.getElementById('overlayCanvas');
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const detectionStatus = document.getElementById('detectionStatus');
-        let stream = null;
-        let isDetecting = false;
-        let detectionInterval = null;
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const overlayCanvas = document.getElementById('overlayCanvas');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statusBadge = document.getElementById('statusBadge');
+    const areaBadge = document.getElementById('areaBadge');
+    const areaNameBadge = document.getElementById('areaNameBadge');
+    const areaSelect = document.getElementById('areaSelect');
+    const alertFlash = document.getElementById('alertFlash');
+    const alertFlashMsg = document.getElementById('alertFlashMsg');
+    const eventLog = document.getElementById('eventLog');
 
-        startBtn.addEventListener('click', async () => {
-            try {
-                // Pre-configuring stream for standard aspect ratio
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        width: { ideal: 640 }, 
-                        height: { ideal: 480 },
-                        facingMode: "user" 
-                    } 
-                });
-                video.srcObject = stream;
-                isDetecting = true;
-                startBtn.disabled = true;
-                stopBtn.disabled = false;
-                detectionStatus.textContent = "Detection Running";
-                detectionStatus.className = "badge bg-success p-2 shadow-sm";
-                
-                // Adjust overlay canvas size once video starts
-                video.onloadedmetadata = () => {
-                    overlayCanvas.width = video.videoWidth;
-                    overlayCanvas.height = video.videoHeight;
-                    syncOverlaySize();
-                };
+    let stream = null;
+    let isDetecting = false;
+    let detectionInterval = null;
+    let phoneCount = 0;
+    let alertCount = 0;
+    let frameCount = 0;
+    let alertFlashTimeout = null;
 
-                // Start processing frames every 600ms
-                detectionInterval = setInterval(processFrame, 600);
-            } catch (err) {
-                console.error("Camera error:", err);
-                alert("Could not access camera: " + err.message);
-            }
-        });
-
-        function syncOverlaySize() {
-            overlayCanvas.style.width = video.clientWidth + "px";
-            overlayCanvas.style.height = video.clientHeight + "px";
+    // Validate: area must be selected before start
+    startBtn.addEventListener('click', async () => {
+        const areaId = areaSelect ? areaSelect.value : '';
+        if (!areaId) {
+            areaSelect.style.borderColor = 'var(--danger)';
+            areaSelect.style.boxShadow = '0 0 0 3px rgba(255,71,87,0.2)';
+            setTimeout(() => {
+                areaSelect.style.borderColor = '';
+                areaSelect.style.boxShadow = '';
+            }, 2000);
+            addLogEntry('⚠️ Please select a restricted area first!', 'alert');
+            return;
         }
 
-        stopBtn.addEventListener('click', () => {
-            isDetecting = false;
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-                video.srcObject = null;
-            }
-            clearInterval(detectionInterval);
-            
-            // Clear overlay
-            const ctx = overlayCanvas.getContext('2d');
-            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-            
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-            detectionStatus.textContent = "Stopped";
-            detectionStatus.className = "badge bg-secondary p-2";
-        });
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
+            });
+            video.srcObject = stream;
+            isDetecting = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            if (areaSelect) areaSelect.disabled = true;
 
-        async function processFrame() {
-            if (!isDetecting || video.readyState !== 4) return;
+            // Show area badge
+            const areaText = areaSelect.options[areaSelect.selectedIndex].text.replace('📍 ', '');
+            areaNameBadge.textContent = areaText;
+            areaBadge.style.display = 'inline-flex';
 
-            // Update overlay scaling in case window resized
-            syncOverlaySize();
+            statusBadge.innerHTML = '<i class="fas fa-circle"></i> Monitoring';
+            statusBadge.className = 'hud-badge running';
 
-            // Prepare hidden canvas for grabbing the frame
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0);
+            video.onloadedmetadata = () => {
+                overlayCanvas.width = video.videoWidth;
+                overlayCanvas.height = video.videoHeight;
+                syncOverlay();
+            };
 
-            // Compress a bit to save bandwidth/speed
-            const imageData = canvas.toDataURL('image/jpeg', 0.6);
+            detectionInterval = setInterval(processFrame, 600);
+            addLogEntry(`🔴 Monitoring started — Area: ${areaText}`, 'alert');
+        } catch (err) {
+            addLogEntry('❌ Camera error: ' + err.message, 'alert');
+        }
+    });
 
-            try {
-                const response = await fetch('{% url "detect_frame" %}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image: imageData })
-                });
+    stopBtn.addEventListener('click', () => {
+        isDetecting = false;
+        if (stream) stream.getTracks().forEach(t => t.stop());
+        video.srcObject = null;
+        clearInterval(detectionInterval);
+        const ctx = overlayCanvas.getContext('2d');
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-                const data = await response.json();
-                
-                // Clear previous drawings
-                const oCtx = overlayCanvas.getContext('2d');
-                oCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        if (areaSelect) areaSelect.disabled = false;
+        areaBadge.style.display = 'none';
+        statusBadge.innerHTML = '<i class="fas fa-circle"></i> Stopped';
+        statusBadge.className = 'hud-badge idle';
+        addLogEntry('⏹ Monitoring stopped', 'scan');
+    });
 
-                if (data.success) {
-                    // Update Status Badge
-                    if (data.phone_detected) {
-                        detectionStatus.textContent = "⚠️ Phone Detected: " + data.name;
-                        detectionStatus.className = "badge bg-danger p-2 shadow-sm";
+    function syncOverlay() {
+        overlayCanvas.style.width = video.clientWidth + 'px';
+        overlayCanvas.style.height = video.clientHeight + 'px';
+    }
+
+    async function processFrame() {
+        if (!isDetecting || video.readyState !== 4) return;
+        syncOverlay();
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+        const imageData = canvas.toDataURL('image/jpeg', 0.6);
+
+        frameCount++;
+        document.getElementById('frameCount').textContent = frameCount;
+
+        const areaId = areaSelect ? areaSelect.value : '';
+
+        try {
+            const response = await fetch('{% url "detect_frame" %}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageData, area_id: areaId || null })
+            });
+
+            const data = await response.json();
+            const oCtx = overlayCanvas.getContext('2d');
+            oCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+            if (data.success) {
+                // Update status
+                if (data.phone_detected) {
+                    phoneCount++;
+                    document.getElementById('phoneCount').textContent = phoneCount;
+
+                    if (data.area_active) {
+                        statusBadge.innerHTML = '🚨 PHONE IN RESTRICTED AREA!';
+                        statusBadge.className = 'hud-badge phone';
                     } else {
-                        detectionStatus.textContent = "Scanning: " + (data.name !== "Unknown" ? data.name : "Waiting...");
-                        detectionStatus.className = "badge bg-success p-2 shadow-sm";
+                        statusBadge.innerHTML = '📱 Phone — No Area Selected';
+                        statusBadge.className = 'hud-badge phone';
                     }
-
-                    // Draw Detections
-                    if (data.detections && data.detections.length > 0) {
-                        data.detections.forEach(det => {
-                            const [x, y, w, h] = det.bbox;
-                            
-                            // Color coding: Red for phone, Green for face, Orange for debug objects
-                            let color = '#2ed573'; 
-                            if (det.type === 'phone') color = '#ff4757';
-                            if (det.type === 'object') color = '#ffa502';
-                            
-                            // Style settings
-                            oCtx.strokeStyle = color;
-                            oCtx.lineWidth = 4;
-                            oCtx.lineJoin = "round";
-                            
-                            // Draw rectangle
-                            oCtx.strokeRect(x, y, w, h);
-
-                            // Draw label background
-                            oCtx.fillStyle = color;
-                            const label = det.label;
-                            oCtx.font = "bold 18px Arial";
-                            const textWidth = oCtx.measureText(label).width;
-                            oCtx.fillRect(x, y - 30, textWidth + 15, 30);
-
-                            // Draw label text
-                            oCtx.fillStyle = "white";
-                            oCtx.fillText(label, x + 7, y - 8);
-                        });
-                    }
+                } else {
+                    const name = data.name !== 'Unknown' ? data.name : 'Scanning...';
+                    statusBadge.innerHTML = `<i class="fas fa-circle"></i> ${name}`;
+                    statusBadge.className = 'hud-badge running';
                 }
-            } catch (err) {
-                console.error("Processing error:", err);
+
+                // Alert triggered
+                if (data.alert_triggered) {
+                    alertCount++;
+                    document.getElementById('alertCount').textContent = alertCount;
+                    document.getElementById('lastPerson').textContent = data.name || '—';
+                    showAlertFlash(data.name, data.area_name);
+                    addLogEntry(`🚨 ALERT! ${data.name} using phone in ${data.area_name}`, 'alert');
+                }
+
+                // Draw bounding boxes
+                if (data.detections && data.detections.length > 0) {
+                    data.detections.forEach(det => {
+                        const [x, y, w, h] = det.bbox;
+                        let color = '#6c63ff';
+                        if (det.type === 'phone') color = '#ff4757';
+                        if (det.type === 'face') color = '#2ed573';
+
+                        oCtx.strokeStyle = color;
+                        oCtx.lineWidth = 3;
+                        oCtx.lineJoin = 'round';
+                        oCtx.strokeRect(x, y, w, h);
+
+                        // Label pill
+                        const label = det.label;
+                        oCtx.font = 'bold 14px Inter';
+                        const tw = oCtx.measureText(label).width;
+                        oCtx.fillStyle = color;
+                        oCtx.beginPath();
+                        oCtx.roundRect(x, y - 26, tw + 16, 24, 6);
+                        oCtx.fill();
+                        oCtx.fillStyle = 'white';
+                        oCtx.fillText(label, x + 8, y - 8);
+                    });
+                }
             }
+        } catch (err) {
+            console.error('Frame error:', err);
         }
-    </script>
+    }
+
+    function showAlertFlash(name, areaName) {
+        alertFlashMsg.textContent = `${name} detected with phone in ${areaName}. Admin notified!`;
+        alertFlash.style.display = 'block';
+        clearTimeout(alertFlashTimeout);
+        alertFlashTimeout = setTimeout(() => {
+            alertFlash.style.display = 'none';
+        }, 4000);
+    }
+
+    function addLogEntry(msg, type) {
+        const now = new Date();
+        const time = now.toTimeString().slice(0, 8);
+        const entry = document.createElement('div');
+        entry.className = `log-entry ${type}`;
+        entry.innerHTML = `<span class="log-time">${time}</span><span>${msg}</span>`;
+
+        // Remove placeholder
+        const placeholder = eventLog.querySelector('div[style]');
+        if (placeholder) placeholder.remove();
+
+        eventLog.insertBefore(entry, eventLog.firstChild);
+
+        // Keep only last 20 entries
+        while (eventLog.children.length > 20) {
+            eventLog.removeChild(eventLog.lastChild);
+        }
+    }
+
+    window.addEventListener('resize', syncOverlay);
+</script>
 </body>
 </html>
