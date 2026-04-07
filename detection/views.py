@@ -70,29 +70,51 @@ def detect_frame(request):
             recognizer, labels = get_face_models()
 
             # 1. Phone Detection (YOLO)
-            results = yolo(frame, verbose=False)
+            # Lowered confidence threshold to 0.2 for better sensitivity as requested
+            results = yolo(frame, verbose=False, conf=0.2)
             phone_detected = False
+            detections = []
+            
             for result in results:
                 for box in result.boxes:
-                    if int(box.cls[0]) == 67: # Phone class
+                    cls = int(box.cls[0])
+                    # We only care about cell phones (class 67) for the primary status,
+                    # but we can return other detections if needed. 
+                    if cls == 67:
                         phone_detected = True
-                        break
+                        x1, y1, x2, y2 = box.xyxy[0].tolist()
+                        detections.append({
+                            'type': 'phone',
+                            'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                            'label': 'Phone'
+                        })
 
             # 2. Face Recognition (OpenCV LBPH)
-            name = "Unknown"
             face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.equalizeHist(gray) # Better lighting handling
-            faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
+            # Parameters tuned for better sensitivity (1.1 scale, 4 neighbors)
+            faces = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(30, 30))
 
+            found_names = []
             for (x, y, w, h) in faces:
+                name = "Unknown"
                 if recognizer and labels:
                     face_roi = gray[y:y+h, x:x+w]
                     face_roi = cv2.resize(face_roi, (200, 200)) # Standard size
                     label, confidence = recognizer.predict(face_roi)
                     
-                    if confidence < 75: # Strict threshold
+                    # Slightly relaxed threshold (80 used to be 75) for better recognition in varied lighting
+                    if confidence < 80:
                         name = labels.get(label, "Unknown")
+                        if name != "Unknown":
+                            found_names.append(name)
+
+                detections.append({
+                    'type': 'face',
+                    'bbox': [int(x), int(y), int(w), int(h)],
+                    'label': name
+                })
 
                 # If phone + known user, save record
                 if phone_detected and name != "Unknown":
@@ -101,7 +123,8 @@ def detect_frame(request):
             return JsonResponse({
                 'success': True,
                 'phone_detected': phone_detected,
-                'name': name
+                'name': found_names[0] if found_names else "Unknown",
+                'detections': detections
             })
 
         except Exception as e:

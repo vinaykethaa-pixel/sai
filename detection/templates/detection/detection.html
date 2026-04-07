@@ -101,8 +101,9 @@
                             </span>
                         </div>
 
-                        <div class="text-center video-container">
+                        <div class="text-center video-container mx-auto" style="max-width: 640px;">
                             <video id="video" autoplay muted playsinline></video>
+                            <canvas id="overlayCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
                             <canvas id="canvas" style="display:none;"></canvas>
                             <div class="detection-overlay" id="overlay">
                                 <span id="detectionStatus" class="badge bg-secondary p-2">Initializing...</span>
@@ -165,6 +166,7 @@
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
+        const overlayCanvas = document.getElementById('overlayCanvas');
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const detectionStatus = document.getElementById('detectionStatus');
@@ -174,21 +176,40 @@
 
         startBtn.addEventListener('click', async () => {
             try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                // Pre-configuring stream for standard aspect ratio
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 }, 
+                        height: { ideal: 480 },
+                        facingMode: "user" 
+                    } 
+                });
                 video.srcObject = stream;
                 isDetecting = true;
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
                 detectionStatus.textContent = "Detection Running";
-                detectionStatus.className = "badge bg-success p-2";
+                detectionStatus.className = "badge bg-success p-2 shadow-sm";
                 
-                // Start processing frames every 500ms (adjust as needed for performance)
-                detectionInterval = setInterval(processFrame, 500);
+                // Adjust overlay canvas size once video starts
+                video.onloadedmetadata = () => {
+                    overlayCanvas.width = video.videoWidth;
+                    overlayCanvas.height = video.videoHeight;
+                    syncOverlaySize();
+                };
+
+                // Start processing frames every 600ms
+                detectionInterval = setInterval(processFrame, 600);
             } catch (err) {
                 console.error("Camera error:", err);
                 alert("Could not access camera: " + err.message);
             }
         });
+
+        function syncOverlaySize() {
+            overlayCanvas.style.width = video.clientWidth + "px";
+            overlayCanvas.style.height = video.clientHeight + "px";
+        }
 
         stopBtn.addEventListener('click', () => {
             isDetecting = false;
@@ -197,6 +218,11 @@
                 video.srcObject = null;
             }
             clearInterval(detectionInterval);
+            
+            // Clear overlay
+            const ctx = overlayCanvas.getContext('2d');
+            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            
             startBtn.disabled = false;
             stopBtn.disabled = true;
             detectionStatus.textContent = "Stopped";
@@ -204,14 +230,19 @@
         });
 
         async function processFrame() {
-            if (!isDetecting) return;
+            if (!isDetecting || video.readyState !== 4) return;
 
+            // Update overlay scaling in case window resized
+            syncOverlaySize();
+
+            // Prepare hidden canvas for grabbing the frame
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0);
 
-            const imageData = canvas.toDataURL('image/jpeg', 0.7); // 0.7 quality to save bandwidth
+            // Compress a bit to save bandwidth/speed
+            const imageData = canvas.toDataURL('image/jpeg', 0.6);
 
             try {
                 const response = await fetch('{% url "detect_frame" %}', {
@@ -221,13 +252,47 @@
                 });
 
                 const data = await response.json();
+                
+                // Clear previous drawings
+                const oCtx = overlayCanvas.getContext('2d');
+                oCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
                 if (data.success) {
+                    // Update Status Badge
                     if (data.phone_detected) {
                         detectionStatus.textContent = "⚠️ Phone Detected: " + data.name;
-                        detectionStatus.className = "badge bg-danger p-2";
+                        detectionStatus.className = "badge bg-danger p-2 shadow-sm";
                     } else {
                         detectionStatus.textContent = "Scanning: " + (data.name !== "Unknown" ? data.name : "Waiting...");
-                        detectionStatus.className = "badge bg-success p-2";
+                        detectionStatus.className = "badge bg-success p-2 shadow-sm";
+                    }
+
+                    // Draw Detections
+                    if (data.detections && data.detections.length > 0) {
+                        data.detections.forEach(det => {
+                            const [x, y, w, h] = det.bbox;
+                            const isPhone = det.type === 'phone';
+                            
+                            // Style settings
+                            const color = isPhone ? '#ff4757' : '#2ed573';
+                            oCtx.strokeStyle = color;
+                            oCtx.lineWidth = 4;
+                            oCtx.lineJoin = "round";
+                            
+                            // Draw rectangle
+                            oCtx.strokeRect(x, y, w, h);
+
+                            // Draw label background
+                            oCtx.fillStyle = color;
+                            const label = det.label;
+                            oCtx.font = "bold 18px Arial";
+                            const textWidth = oCtx.measureText(label).width;
+                            oCtx.fillRect(x, y - 30, textWidth + 15, 30);
+
+                            // Draw label text
+                            oCtx.fillStyle = "white";
+                            oCtx.fillText(label, x + 7, y - 8);
+                        });
                     }
                 }
             } catch (err) {
