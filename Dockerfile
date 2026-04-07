@@ -1,16 +1,17 @@
-# Use the full Python image (non-slim) for better build reliability
-FROM python:3.11-bookworm
+# Use an official Python runtime as a parent image
+FROM python:3.11-slim-bookworm
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
 # Install system dependencies for OpenCV and dlib
-# Note: full 'bookworm' already has build-essential and some others,
-# but we explicitly add them for completeness.
+# Adding pkg-config and libjpeg-dev for better dlib build support
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     cmake \
     pkg-config \
+    libjpeg-dev \
     libopenblas-dev \
     liblapack-dev \
     libx11-dev \
@@ -18,25 +19,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     libxext6 \
     libxrender-dev \
-    libjpeg-dev \
     libboost-all-dev \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Upgrade pip and set up build tools
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel cmake
+# Install python build dependencies first
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools cmake
 
-# Install dlib with verbose logging and memory limit
-# Using -v lets us see the actual cmake error if it fails
+# Install dlib separately to isolate the build and limit memory usage
+# Added -v (verbose) to see EXACT cmake errors if it fails again
 RUN CMAKE_BUILD_PARALLEL_LEVEL=1 pip install -v --no-cache-dir dlib==19.24.2
 
-# Copy the rest of the project files
+# Copy requirements file (dlib and cmake removed from here in previous step)
 COPY requirements.txt /app/
+
+# Install the rest of the dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the source code
+# Copy the rest of the project
 COPY . /app/
 
 # Run the app using Gunicorn
