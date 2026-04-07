@@ -2,12 +2,12 @@ services:
   - type: web
     name: face-attendance-system
     env: docker
-    plan: free # Change this to 'standard' if needed
-    numInstances: 1
+    plan: free
+    region: oregon # Common default
     envVars:
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
-        value: ".onrender.com"
+        value: "*"
       - key: SECRET_KEY
         value: "django-insecure-rr9+5oc%@p^z%^z_wm5!=+ja_q4_ek58u1s4bm-mfejz08b#d!"
