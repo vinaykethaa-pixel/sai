@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
 # Install system dependencies for OpenCV and dlib
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
     libopenblas-dev \
@@ -16,23 +16,28 @@ RUN apt-get update && apt-get install -y \
     libsm6 \
     libxext6 \
     libxrender-dev \
+    libboost-all-dev \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy requirements file
+# Install python build dependencies first
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools cmake
+
+# Install dlib separately to isolate the build and limit memory usage
+# Parallel level 1 is critical for 512MB RAM machines
+RUN CMAKE_BUILD_PARALLEL_LEVEL=1 pip install --no-cache-dir dlib==19.24.2
+
+# Copy requirements file (dlib and cmake removed from here in next step)
 COPY requirements.txt /app/
 
-# Install dependencies (this will take a while because of dlib)
+# Install the rest of the dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the project
 COPY . /app/
-
-# Run static files collection (optional if you want it in the container)
-# RUN python manage.py collectstatic --noinput
 
 # Run the app using Gunicorn
 CMD ["gunicorn", "--bind", "0.0.0.0:10000", "face_detection_system.wsgi:application"]
