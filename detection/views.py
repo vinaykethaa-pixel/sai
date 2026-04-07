@@ -12,6 +12,14 @@ from django.conf import settings
 from ultralytics import YOLO
 import numpy as np
 from django.utils import timezone
+import logging
+
+try:
+    import onnxruntime as ort
+except ImportError:
+    ort = None
+
+logger = logging.getLogger(__name__)
 
 # Load YOLO and Face models lazily to save memory
 yolo_model = None
@@ -22,7 +30,23 @@ label_map = None
 def get_yolo_model():
     global yolo_model
     if yolo_model is None:
-        yolo_model = YOLO('yolov8n.pt')
+        onnx_path = os.path.join(settings.BASE_DIR, 'yolov8n.onnx')
+        model_pt_path = os.path.join(settings.BASE_DIR, 'yolov8n.pt')
+        
+        if ort and os.path.exists(onnx_path):
+            try:
+                # Load ONNX model for CPU (memory efficient)
+                yolo_model = {
+                    'type': 'onnx',
+                    'session': ort.InferenceSession(onnx_path, providers=['CPUExecutionProvider']),
+                }
+                print("SUCCESS: Loaded YOLOv8 ONNX model for CPU inference.")
+            except Exception as e:
+                print(f"WARNING: Failing back to PT model. ONNX error: {str(e)}")
+                yolo_model = {'type': 'pt', 'model': YOLO(model_pt_path)}
+        else:
+            yolo_model = {'type': 'pt', 'model': YOLO(model_pt_path)}
+            
     return yolo_model
 
 
@@ -88,36 +112,63 @@ def detect_frame(request):
             yolo = get_yolo_model()
             recognizer, labels = get_face_models()
 
-            # 1. Phone Detection (YOLO)
-            # Increased confidence to 0.45 to reduce false positives
-            results = yolo(frame, verbose=False, conf=0.45)
+            # 1. Phone Detection (YOLO / ONNX)
+            yolo = get_yolo_model()
             phone_detected = False
             detections = []
 
-            for result in results:
-                for box in result.boxes:
-                    cls = int(box.cls[0])
-                    x1, y1, x2, y2 = box.xyxy[0].tolist()
-                    conf = float(box.conf[0])
-
-                    # 67 = cell phone, 65 = remote
-                    # If it's a cell phone, we accept it with the high confidence
-                    # If it's a remote, we only accept if very confident (0.6+)
-                    is_phone = (cls == 67) or (cls == 65 and conf > 0.6)
-
-                    if is_phone:
-                        phone_detected = True
-                        detections.append({
-                            'type': 'phone',
-                            'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
-                            'label': 'Phone Detected!'
-                        })
-                    elif conf > 0.4: # Log other objects with decent confidence
-                        detections.append({
-                            'type': 'object',
-                            'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
-                            'label': yolo.names.get(cls, 'Object')
-                        })
+            if yolo['type'] == 'onnx':
+                # Preprocess for ONNX
+                img = cv2.resize(frame, (640, 640))
+                img = img.astype(np.float32) / 255.0
+                img = np.transpose(img, (2, 0, 1))  # HWC to CHW
+                img = np.expand_dims(img, axis=0)   # CHW to NCHW
+                
+                # Run inference
+                input_name = yolo['session'].get_inputs()[0].name
+                outputs = yolo['session'].run(None, {input_name: img})
+                
+                # Postprocess (simplified for YOLOv8)
+                output = outputs[0][0]
+                output = np.transpose(output, (1, 0)) # [84, 8400] to [8400, 84]
+                
+                # Filter by confidence (index 67 is cell phone)
+                for row in output:
+                    classes_scores = row[4:]
+                    conf = np.max(classes_scores)
+                    if conf > 0.35:  # Lowered threshold for webcam
+                        cls = np.argmax(classes_scores)
+                        if cls == 67 or cls == 65: # cell phone or remote
+                            x, y, w, h = row[:4]
+                            # Scale to original frame
+                            x1 = (x - w/2) * frame.shape[1] / 640
+                            y1 = (y - h/2) * frame.shape[0] / 640
+                            x2 = (x + w/2) * frame.shape[1] / 640
+                            y2 = (y + h/2) * frame.shape[0] / 640
+                            
+                            phone_detected = True
+                            detections.append({
+                                'type': 'phone',
+                                'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                                'label': f'Phone Detected! ({int(conf*100)}%)'
+                            })
+                            print(f"LOG: Phone detected with {conf:.2f} confidence")
+            else:
+                # Fallback to Ultralytics PT
+                results = yolo['model'](frame, verbose=False, conf=0.35)
+                for result in results:
+                    for box in result.boxes:
+                        cls = int(box.cls[0])
+                        if cls == 67 or cls == 65:
+                            phone_detected = True
+                            x1, y1, x2, y2 = box.xyxy[0].tolist()
+                            conf = float(box.conf[0])
+                            detections.append({
+                                'type': 'phone',
+                                'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                                'label': f'Phone Detected! ({int(conf*100)}%)'
+                            })
+                            print(f"LOG: Phone (PT) detected with {conf:.2f} confidence")
 
             # 2. Face Recognition (OpenCV LBPH)
             face_cascade = cv2.CascadeClassifier(
