@@ -1,24 +1,18 @@
-# Use an official Python runtime as a parent image
-FROM python:3.11-slim-bookworm
+# Use the FULL Python image instead of slim (heavier but has complete build tools)
+FROM python:3.11-bookworm
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# Install system dependencies for OpenCV and dlib
-# Adding pkg-config and libjpeg-dev for better dlib build support
+# Install additional system dependencies needed for dlib/opencv
+# Full image already has most build-essential tools, but we add specific ones
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     cmake \
-    pkg-config \
-    libjpeg-dev \
     libopenblas-dev \
     liblapack-dev \
     libx11-dev \
     libgtk-3-dev \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
     libboost-all-dev \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -26,11 +20,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set the working directory in the container
 WORKDIR /app
 
-# Install python build dependencies first
-RUN pip install --no-cache-dir --upgrade pip wheel setuptools cmake
+# Upgrade pip and install build dependencies
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
-# Install dlib separately to isolate the build and limit memory usage
-# Added -v (verbose) to see EXACT cmake errors if it fails again
+# Use ONLY ONE CORE for compilation to avoid Render's 512MB RAM limit
+# Verbose mode enabled for easier debugging if it fails
 RUN CMAKE_BUILD_PARALLEL_LEVEL=1 pip install -v --no-cache-dir dlib==19.24.2
 
 # Copy requirements file (dlib and cmake removed from here in previous step)
