@@ -271,10 +271,13 @@
                     if (data.detections && data.detections.length > 0) {
                         data.detections.forEach(det => {
                             const [x, y, w, h] = det.bbox;
-                            const isPhone = det.type === 'phone';
+                            
+                            // Color coding: Red for phone, Green for face, Orange for debug objects
+                            let color = '#2ed573'; 
+                            if (det.type === 'phone') color = '#ff4757';
+                            if (det.type === 'object') color = '#ffa502';
                             
                             // Style settings
-                            const color = isPhone ? '#ff4757' : '#2ed573';
                             oCtx.strokeStyle = color;
                             oCtx.lineWidth = 4;
                             oCtx.lineJoin = "round";

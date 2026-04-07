@@ -69,42 +69,49 @@ def detect_frame(request):
             yolo = get_yolo_model()
             recognizer, labels = get_face_models()
 
-            # 1. Phone Detection (YOLO)
-            # Lowered confidence threshold to 0.2 for better sensitivity as requested
-            results = yolo(frame, verbose=False, conf=0.2)
+            # 1. Advanced Phone/Object Detection (YOLO)
+            # Lowering confidence even more (0.15) and including "remote" (65) which is a common mis-ID for phones
+            results = yolo(frame, verbose=False, conf=0.15)
             phone_detected = False
             detections = []
             
             for result in results:
                 for box in result.boxes:
                     cls = int(box.cls[0])
-                    # We only care about cell phones (class 67) for the primary status,
-                    # but we can return other detections if needed. 
-                    if cls == 67:
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    
+                    # 67 is cell phone, 65 is remote (often how phones look from the back)
+                    if cls in [67, 65]:
                         phone_detected = True
-                        x1, y1, x2, y2 = box.xyxy[0].tolist()
                         detections.append({
                             'type': 'phone',
                             'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
-                            'label': 'Phone'
+                            'label': 'Phone'# if cls == 67 else 'Phone (alt)'
+                        })
+                    elif box.conf[0] > 0.35: # Generic objects debug
+                        detections.append({
+                            'type': 'object',
+                            'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                            'label': yolo.names.get(cls, 'Object')
                         })
 
             # 2. Face Recognition (OpenCV LBPH)
             face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.equalizeHist(gray) # Better lighting handling
-            # Parameters tuned for better sensitivity (1.1 scale, 4 neighbors)
-            faces = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(30, 30))
+            
+            # Using 1.1 scaleFactor and 4 minNeighbors for high sensitivity
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
 
             found_names = []
             for (x, y, w, h) in faces:
                 name = "Unknown"
                 if recognizer and labels:
                     face_roi = gray[y:y+h, x:x+w]
-                    face_roi = cv2.resize(face_roi, (200, 200)) # Standard size
+                    face_roi = cv2.resize(face_roi, (200, 200))
                     label, confidence = recognizer.predict(face_roi)
                     
-                    # Slightly relaxed threshold (80 used to be 75) for better recognition in varied lighting
+                    # 80 confidence is a good balance for LBPH
                     if confidence < 80:
                         name = labels.get(label, "Unknown")
                         if name != "Unknown":
