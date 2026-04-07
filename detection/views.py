@@ -35,17 +35,14 @@ def get_yolo_model():
         
         if ort and os.path.exists(onnx_path):
             try:
-                # Load ONNX model for CPU (memory efficient)
-                yolo_model = {
-                    'type': 'onnx',
-                    'session': ort.InferenceSession(onnx_path, providers=['CPUExecutionProvider']),
-                }
-                print("SUCCESS: Loaded YOLOv8 ONNX model for CPU inference.")
+                # Load ONNX model for CPU via Ultralytics (handles memory efficiency and postprocessing)
+                yolo_model = YOLO(onnx_path, task='detect')
+                print("SUCCESS: Loaded YOLOv8 ONNX model via Ultralytics.")
             except Exception as e:
                 print(f"WARNING: Failing back to PT model. ONNX error: {str(e)}")
-                yolo_model = {'type': 'pt', 'model': YOLO(model_pt_path)}
+                yolo_model = YOLO(model_pt_path)
         else:
-            yolo_model = {'type': 'pt', 'model': YOLO(model_pt_path)}
+            yolo_model = YOLO(model_pt_path)
             
     return yolo_model
 
@@ -113,84 +110,25 @@ def detect_frame(request):
             recognizer, labels = get_face_models()
 
             # 1. Phone Detection (YOLO / ONNX)
-            yolo = get_yolo_model()
             phone_detected = False
             detections = []
 
-            if yolo['type'] == 'onnx':
-                # Preprocess for ONNX
-                img = cv2.resize(frame, (640, 640))
-                img = img.astype(np.float32) / 255.0
-                img = np.transpose(img, (2, 0, 1))  # HWC to CHW
-                img = np.expand_dims(img, axis=0)   # CHW to NCHW
-                
-                # Run inference
-                input_name = yolo['session'].get_inputs()[0].name
-                outputs = yolo['session'].run(None, {input_name: img})
-                
-                # Postprocess with Numpy Vectorization (Much faster)
-                output = outputs[0][0].T  # [8400, 84]
-                boxes = output[:, :4]     # [x, y, w, h]
-                scores = output[:, 4:]    # [8400, 80]
-                
-                # Get max scores and indices
-                max_scores = np.max(scores, axis=1)
-                class_ids = np.argmax(scores, axis=1)
-                
-                # Filter by confidence and class (67=phone, 65=remote)
-                mask = (max_scores > 0.3) & ((class_ids == 67) | (class_ids == 65))
-                filtered_boxes = boxes[mask]
-                filtered_scores = max_scores[mask]
-                filtered_class_ids = class_ids[mask]
-                
-                if len(filtered_scores) > 0:
-                    # Convert [x, y, w, h] to [x1, y1, x2, y2]
-                    # Original coordinates are scaled to 640x640
-                    x1 = (filtered_boxes[:, 0] - filtered_boxes[:, 2]/2) * frame.shape[1] / 640
-                    y1 = (filtered_boxes[:, 1] - filtered_boxes[:, 3]/2) * frame.shape[0] / 640
-                    x2 = (filtered_boxes[:, 0] + filtered_boxes[:, 2]/2) * frame.shape[1] / 640
-                    y2 = (filtered_boxes[:, 1] + filtered_boxes[:, 3]/2) * frame.shape[0] / 640
-                    
-                    # Manual NMS (Non-Maximum Suppression)
-                    indices = cv2.dnn.NMSBoxes(
-                        [[int(x1[i]), int(y1[i]), int(x2[i]-x1[i]), int(y2[i]-y1[i])] for i in range(len(x1))],
-                        filtered_scores.tolist(), 0.3, 0.45
-                    )
-                    
-                    if len(indices) > 0:
+            # Ultralytics transparently handles ONNX sessions, NMS, resizing, and coordinates
+            results = yolo(frame, verbose=False, conf=0.20)
+            
+            for result in results:
+                for box in result.boxes:
+                    cls = int(box.cls[0])
+                    if cls == 67 or cls == 65:  # 67=cell phone, 65=remote
                         phone_detected = True
-                        for i in indices:
-                            # If it's a list (older cv2) or numpy array
-                            idx = i[0] if isinstance(i, (list, np.ndarray)) else i
-                            
-                            detections.append({
-                                'type': 'phone',
-                                'bbox': [int(x1[idx]), int(y1[idx]), int(x2[idx]-x1[idx]), int(y2[idx]-y1[idx])],
-                                'label': f'Phone Detected! ({int(filtered_scores[idx]*100)}%)'
-                            })
-                            print(f"DEBUG: Found Phone confidence {filtered_scores[idx]:.2f}")
-                else:
-                    # Log high confidence objects for debugging if nothing was detected
-                    # This helps see what the model is actually seeing
-                    top_idx = np.argmax(max_scores)
-                    if max_scores[top_idx] > 0.2:
-                        print(f"DEBUG: No phone, but top object is {class_ids[top_idx]} with conf {max_scores[top_idx]:.2f}")
-            else:
-                # Fallback to Ultralytics PT
-                results = yolo['model'](frame, verbose=False, conf=0.35)
-                for result in results:
-                    for box in result.boxes:
-                        cls = int(box.cls[0])
-                        if cls == 67 or cls == 65:
-                            phone_detected = True
-                            x1, y1, x2, y2 = box.xyxy[0].tolist()
-                            conf = float(box.conf[0])
-                            detections.append({
-                                'type': 'phone',
-                                'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
-                                'label': f'Phone Detected! ({int(conf*100)}%)'
-                            })
-                            print(f"LOG: Phone (PT) detected with {conf:.2f} confidence")
+                        x1, y1, x2, y2 = box.xyxy[0].tolist()
+                        conf = float(box.conf[0])
+                        detections.append({
+                            'type': 'phone',
+                            'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                            'label': f'Phone Detected! ({int(conf*100)}%)'
+                        })
+                        print(f"LOG: Phone detected with {conf:.2f} confidence")
 
             # 2. Face Recognition (OpenCV LBPH)
             face_cascade = cv2.CascadeClassifier(
@@ -239,6 +177,8 @@ def detect_frame(request):
             })
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return JsonResponse({'success': False, 'error': str(e)})
 
     return JsonResponse({'success': False, 'error': 'Invalid request'})
