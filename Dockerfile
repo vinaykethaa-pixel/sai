@@ -27,8 +27,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the project
 COPY . /app/
 
+# Create a non-root user and set permissions
+RUN useradd -m -u 1000 user && \
+    chown -R user:user /app
+
+# Switch to the non-root user
+USER user
+
 # Create a start script to run migrations, collect static files, and then start Gunicorn
-RUN echo "#!/bin/sh\npython manage.py migrate --noinput\npython manage.py collectstatic --noinput\ngunicorn --bind 0.0.0.0:7860 --workers 1 --timeout 300 face_detection_system.wsgi:application" > /app/start.sh
+RUN echo "#!/bin/sh\npython manage.py migrate --noinput\npython manage.py collectstatic --noinput --clear\ngunicorn --bind 0.0.0.0:7860 --workers 1 --timeout 300 face_detection_system.wsgi:application" > /app/start.sh
 RUN chmod +x /app/start.sh
 
 # Run the app using the start script

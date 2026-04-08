@@ -111,8 +111,8 @@ def detect_frame(request):
             phone_detected = False
             detections = []
 
-            # Very sensitive threshold (0.12) to ensure detection even in poor lighting
-            results = yolo(frame, verbose=False, conf=0.12) if yolo else []
+            # Higher threshold (0.35) for better accuracy (reduces hand-phone confusion)
+            results = yolo(frame, verbose=False, conf=0.35) if yolo else []
             
             if yolo:
                 for result in results:
@@ -121,8 +121,8 @@ def detect_frame(request):
                         x1, y1, x2, y2 = box.xyxy[0].tolist()
                         conf = float(box.conf[0])
                         
-                        # 67=cell phone, 65=remote (common substitute)
-                        if cls == 67 or cls == 65:
+                        # Use strictly class 67 for cell phone detection
+                        if cls == 67:
                             phone_detected = True
                             detections.append({
                                 'type': 'phone',
@@ -169,12 +169,13 @@ def detect_frame(request):
                     'label': name
                 })
 
-                # Alert logic: triggered if phone detected + known person + in restricted area
-                if phone_detected and restricted_area and name != "Unknown":
+                # Alert logic: triggered if phone detected in restricted area
+                if phone_detected and restricted_area:
+                    # Save even if name is Unknown if it's a restricted area
                     saved = save_detection_with_alert(name, frame, restricted_area)
                     if saved:
                         alert_triggered = True
-                        print(f"ALERT: Phone usage by {name} in {restricted_area.name}")
+                        print(f"ALERT: Phone usage in {restricted_area.name} (User: {name})")
 
             return JsonResponse({
                 'success': True,
@@ -197,9 +198,9 @@ def detect_frame(request):
 def save_detection_with_alert(name, frame, area):
     """Save phone detection with alert flag — only for restricted areas"""
     try:
-        person = Person.objects.get(username=name)
+        person = Person.objects.filter(username=name).first()
 
-        # Throttle: 10 seconds cooldown per person per area
+        # Throttle: 10 seconds cooldown per person/unknown per area
         last_save = PhoneDetection.objects.filter(
             person=person, area=area
         ).order_by('-detection_time').first()
