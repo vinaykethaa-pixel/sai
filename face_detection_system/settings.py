@@ -155,3 +155,7 @@ TWILIO_ACCOUNT_SID = 'your_account_sid_here'
 TWILIO_AUTH_TOKEN = 'your_auth_token_here'
 TWILIO_PHONE_NUMBER = 'your_twilio_phone_number_here'
 ADMIN_PHONE_NUMBER = '+916281361684'
+
+# Hugging Face Settings
+X_FRAME_OPTIONS = 'ALLOWALL'
+CSRF_TRUSTED_ORIGINS = ['https://*.hf.space', 'https://*.huggingface.co']
