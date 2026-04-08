@@ -31,7 +31,6 @@ def get_yolo_model():
     global yolo_model
     if yolo_model is None:
         onnx_path = os.path.join(settings.BASE_DIR, 'yolov8n.onnx')
-        model_pt_path = os.path.join(settings.BASE_DIR, 'yolov8n.pt')
         
         if ort and os.path.exists(onnx_path):
             try:
@@ -39,10 +38,9 @@ def get_yolo_model():
                 yolo_model = YOLO(onnx_path, task='detect')
                 print("SUCCESS: Loaded YOLOv8 ONNX model via Ultralytics.")
             except Exception as e:
-                print(f"WARNING: Failing back to PT model. ONNX error: {str(e)}")
-                yolo_model = YOLO(model_pt_path)
+                print(f"ERROR: Failed to load ONNX model. {str(e)}")
         else:
-            yolo_model = YOLO(model_pt_path)
+            print("ERROR: ONNX Runtime not installed or ONNX model missing.")
             
     return yolo_model
 
