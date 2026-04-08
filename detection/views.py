@@ -107,26 +107,35 @@ def detect_frame(request):
             yolo = get_yolo_model()
             recognizer, labels = get_face_models()
 
-            # 1. Phone Detection (YOLO / ONNX)
+            # 1. Phone & Person Detection (YOLO / ONNX)
             phone_detected = False
             detections = []
 
-            # Ultralytics transparently handles ONNX sessions, NMS, resizing, and coordinates
-            results = yolo(frame, verbose=False, conf=0.20)
+            # Very sensitive threshold (0.12) to ensure detection even in poor lighting
+            results = yolo(frame, verbose=False, conf=0.12) if yolo else []
             
-            for result in results:
-                for box in result.boxes:
-                    cls = int(box.cls[0])
-                    if cls == 67 or cls == 65:  # 67=cell phone, 65=remote
-                        phone_detected = True
+            if yolo:
+                for result in results:
+                    for box in result.boxes:
+                        cls = int(box.cls[0])
                         x1, y1, x2, y2 = box.xyxy[0].tolist()
                         conf = float(box.conf[0])
-                        detections.append({
-                            'type': 'phone',
-                            'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
-                            'label': f'Phone Detected! ({int(conf*100)}%)'
-                        })
-                        print(f"LOG: Phone detected with {conf:.2f} confidence")
+                        
+                        # 67=cell phone, 65=remote (common substitute)
+                        if cls == 67 or cls == 65:
+                            phone_detected = True
+                            detections.append({
+                                'type': 'phone',
+                                'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                                'label': f'Phone ({int(conf*100)}%)'
+                            })
+                            print(f"DEBUG: Found Phone (conf={conf:.2f})")
+                        elif cls == 0: # Person
+                            detections.append({
+                                'type': 'person',
+                                'bbox': [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                                'label': f'Person ({int(conf*100)}%)'
+                            })
 
             # 2. Face Recognition (OpenCV LBPH)
             face_cascade = cv2.CascadeClassifier(
@@ -135,7 +144,7 @@ def detect_frame(request):
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.equalizeHist(gray)
             faces = face_cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30)
+                gray, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30) # More sensitive
             )
 
             found_names = []
@@ -147,10 +156,12 @@ def detect_frame(request):
                     face_roi = gray[y:y+h, x:x+w]
                     face_roi = cv2.resize(face_roi, (200, 200))
                     label, confidence = recognizer.predict(face_roi)
-                    if confidence < 80:
+                    # LBPH: Lower distance = higher confidence. 100-120 is usually good.
+                    if confidence < 110: 
                         name = labels.get(label, "Unknown")
                         if name != "Unknown":
                             found_names.append(name)
+                            print(f"DEBUG: Recognized Face: {name} (dist={confidence:.2f})")
 
                 detections.append({
                     'type': 'face',
@@ -158,11 +169,12 @@ def detect_frame(request):
                     'label': name
                 })
 
-                # Save only when: phone detected + in restricted area
+                # Alert logic: triggered if phone detected + known person + in restricted area
                 if phone_detected and restricted_area and name != "Unknown":
                     saved = save_detection_with_alert(name, frame, restricted_area)
                     if saved:
                         alert_triggered = True
+                        print(f"ALERT: Phone usage by {name} in {restricted_area.name}")
 
             return JsonResponse({
                 'success': True,

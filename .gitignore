@@ -12,8 +12,8 @@ db.sqlite3
 media/
 staticfiles/
 
-# Large Files (removed *.pt to allow model deployment)
-*.onnx
+# Large Files (removed *.pt and *.onnx to allow model deployment)
+# *.onnx (Removed to allow push)
 
 # IDE
 .vscode/
