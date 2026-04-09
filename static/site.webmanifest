@@ -1,23 +1,50 @@
 {
     "name": "Restricted Area Monitor",
     "short_name": "AreaMonitor",
-    "description": "AI Face and Phone Detection System",
+    "description": "AI-powered Face Recognition & Mobile Phone Detection System for Restricted Areas",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#0d1117",
+    "orientation": "portrait-primary",
+    "background_color": "#0d0d1a",
     "theme_color": "#6c63ff",
+    "lang": "en",
+    "scope": "/",
     "icons": [
         {
             "src": "https://cdn-icons-png.flaticon.com/512/2592/2592231.png",
             "sizes": "192x192",
             "type": "image/png",
-            "purpose": "any maskable"
+            "purpose": "any"
         },
         {
             "src": "https://cdn-icons-png.flaticon.com/512/2592/2592231.png",
             "sizes": "512x512",
             "type": "image/png",
-            "purpose": "any maskable"
+            "purpose": "maskable"
         }
-    ]
+    ],
+    "shortcuts": [
+        {
+            "name": "Live Detection",
+            "short_name": "Detect",
+            "description": "Start live phone detection monitoring",
+            "url": "/detection/",
+            "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/2592/2592231.png", "sizes": "96x96" }]
+        },
+        {
+            "name": "Register Face",
+            "short_name": "Register",
+            "description": "Capture and register a new person",
+            "url": "/capture/",
+            "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/2592/2592231.png", "sizes": "96x96" }]
+        },
+        {
+            "name": "Admin Dashboard",
+            "short_name": "Admin",
+            "description": "View alerts and manage the system",
+            "url": "/dashboard/admin/",
+            "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/2592/2592231.png", "sizes": "96x96" }]
+        }
+    ],
+    "categories": ["security", "utilities", "productivity"]
 }
